@@ -49,6 +49,9 @@
 4. 作業を終えるときや担当を交代するときは `release` で編集権を返す。前の担当の編集権を勝手に解除しない。異常終了したときの復旧は、基盤の `WORKSPACE_HUB.md` の `recover` 手順に従う。
 5. レビュー担当はこのリポジトリのファイルを直接編集しない。指摘は基盤の `review-note` か、ユーザーを通じて伝える。
 6. `STATUS.md` を更新するのは、編集権を持つ担当1名だけ。
+7. コミット、push、ブランチの作成や切り替えも編集に含める。編集権を返した後に小さな追記やコミットを頼まれたときも、改めて取得する。
+
+編集権の手順を仕組みで守る改修（手順の1コマンド化、編集権を確かめるフック）は、この案件ではなく AI自律基盤の改修として別に扱う。基盤側で取り込むまでは、このPCの手元でだけ、試作版のフック（`tools/relay*.ps1` など、リポジトリには含めない）が動いている。コミットが止められたら、表示に従って編集権を取得する。
 
 ## 現行基盤との関係（未解決の課題）
 
@@ -75,7 +78,10 @@
 - Flutter 3.50（Dart 3.14）。Material は `package:material_ui/material_ui.dart` から読み込む（`package:flutter/material.dart` は非推奨）。
 - ルートの `pubspec.yaml` は pub workspace。依存はルートで `flutter pub get` すれば全体が解決する。
 - 意思表示の型は `SwipeIntent`（Flutterの `Intent` と名前が衝突するため）。
-- 確認コマンド：`dart analyze packages apps`、`packages/swipe_core` で `dart test`、`packages/swipe_ui` で `flutter test`。
+- 確認コマンド：`powershell -NoProfile -File tools/check.ps1`。中身は `dart analyze packages apps`、`packages/swipe_core` の `dart test`、`packages/swipe_ui` の `flutter test`。
+- Flutter は scoop で導入済みで、ユーザーの PATH にも登録されている。ただし導入前から起動しているアプリのシェルには反映されない。`tools/check.ps1` は PATH を読み直してから実行する。
+- Windows PowerShell 5.1 では、`git` などの外部コマンドを `| Select-Object -First` に渡すと、成功していても終了コードが -1（ツール上は 255）になる。`git log -1` などコマンド側で件数を絞る。
+- 改行コードは `.gitattributes` で LF に統一している（`.bat`・`.cmd` だけ CRLF）。
 
 ## 共通ルール
 
