@@ -22,6 +22,8 @@
 | 既存試作 | `prototypes/flutter_prototype/` | Codexが2026-11-17に作成。参考資料。ビルド対象外 |
 | 移管記録 | `docs/MIGRATION.md` | コピー元、サイズ、SHA256、未移管の範囲 |
 | 基盤の案件 | `C:\Users\hikar\Documents\ChatGPT\AI駆動×AI駆動\app-relay\cases\case-fb506404bfa84fc598380fe9564ea28e` | 編集権・停止と再開・担当予定・コメントの管理に使う。成果物の正本ではない |
+| ビジネス要求の書類 | Google Drive「スワイプマッチング共通基盤」 https://drive.google.com/drive/folders/1IQxoimm9NiZQwuPvekQYHyYa8j0_SOAi | リポジトリの docs と STATUS.md の写し（2026-11-17時点）。正本はリポジトリ |
+| タスク管理 | Notion「Claude OS」のプロジェクト「スワイプマッチング共通基盤」 https://app.notion.com/p/41bf8d3da25e812393dadac3760de00b | タスクはClaude OSの「タスク」DBに、このプロジェクトと紐づけて登録する |
 | 移管前の資料 | `C:\Users\hikar\Documents\ChatGPT\ITコンサル・エンジニア\projects\swipe-matching` | 移行前の控え。更新しない |
 
 案件ID：`case-fb506404bfa84fc598380fe9564ea28e`
