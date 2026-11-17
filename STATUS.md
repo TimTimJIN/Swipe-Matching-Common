@@ -1,45 +1,57 @@
 # 作業状況
 
-更新：2026-11-17 15:45頃（日本時間） Claude Code
+更新：2026-11-17 夕方（日本時間） Claude Code
 
-状態：移管完了。コード作成は保留中（ユーザーの指示待ち）
-現在の担当：Claude Code（実装）／Codex（レビュー）。基盤の担当予定（ROLES.json）は2026-11-17 15:36に切替済み
-編集権：Claude Codeが移管作業のために取得し、作業後に返却済み。次に編集する担当が改めて取得する
+状態：共通基盤 v0.2 を実装済み（模擬バックエンド）。実機検証・実サーバー接続・独立レビューは未実施
+現在の担当：Claude Code（実装）／Codex（レビュー）
+編集権：作業後に返却済み。次に編集する担当が改めて取得する
 
-## 移管でしたこと
+## 経緯
 
-- 旧Codexの編集権は、2026-11-17 15:42にCodexが `recover` で解除した。旧セッションからの停止報告は受け取っていない（基盤の復旧記録より）。
-- ユーザーが案件画面で作業を再開し、方針（移管作業だけを行い、コードは保留）を保存した。Claude Codeが編集権を取得し、方針の確認を記録した。
-- 資料と既存試作をこのリポジトリにコピーし、サイズと SHA256 の一致を確認した（`docs/MIGRATION.md`）。
-- 共通の `AGENTS.md`、`CLAUDE.md`、この `STATUS.md` を作成した。
+- 2026-11-17 午後：Codexから移管（`docs/MIGRATION.md`）。
+- 同日：ユーザーが「共通基盤をつくるまで進めて」と指示し、コード作成の保留を解除。構成の既定値（用途ごとに別アプリ＋共通パッケージ、最初は模擬バックエンド）を承認。Flutter SDK の導入（scoop、Flutter 3.50.0／Dart 3.14.0）も承認。
 
 ## 成果物
 
-| 場所 | 状態 |
+| 場所 | 内容 |
 | --- | --- |
-| docs/SWIPE_MATCHING_CASE.md | 調査・設計案 v0.1。採用確定ではない |
-| docs/CORE_AND_POC.md | 共通コアと技術検証の仕様案 v0.1 |
-| docs/REVIEW_CONNECTIONS.md | 2026-11-16時点のレビュー接続の確認記録 |
-| prototypes/flutter_prototype/ | Codex作成の試作。未実行・未検証 |
+| `packages/swipe_core` | 純Dartの共通コア。設定、モデル、成立ルール、API契約、失敗型、模擬バックエンド、架空データ（各20件） |
+| `packages/swipe_ui` | Flutterの共通画面。探す（スワイプ／ボタン）、成立・会話、通報・ブロック、退会、再送表示 |
+| `apps/hobby_buddies` | 趣味仲間（人対人、相互の興味ありで成立） |
+| `apps/work_consult` | 仕事相談（人対案件、オーナー承認で成立） |
+| `docs/ARCHITECTURE.md` | 構成、共通と用途別の分担、守っている規則、未対応範囲 |
 
-## 検証・レビュー
+## 受け入れ条件の状況
 
-- 試作の実行、テスト、iPhone／Androidの実機確認：未実施
-- Claude実モデルのレビュー：未実施
-- Gemini実モデルのレビュー：未実施
-- Codexのレビュー：未実施
+| 条件 | 状態 | 証跡 |
+| --- | --- | --- |
+| 共通コードで2用途の表示項目と成立条件を切り替える | 達成（模擬） | 2アプリの `main.dart` は設定と見た目だけ。UIテスト「work: approved application…」「hobby: button like…」 |
+| スワイプとボタンの両方で操作できる | 達成（テスト環境とブラウザー） | UIテストでボタンとドラッグの両方を確認。Chrome系ブラウザーの幅400pxでマウスのドラッグも確認 |
+| 成立後に会話を試せる | 達成（模擬） | UIテストとブラウザーで送受信を確認 |
+| 再送の検証 | 達成（模擬） | コアテスト「lost response can be retried safely」「message resend…」、UIテスト「chat: lost response…」「deck: failed decision…」 |
+| 成立前の会話制限 | 達成（模擬） | コアテスト「non-participants cannot read or send」「one-sided like…」 |
+| iPhone／Android 実機の結果 | 未実施 | Android SDK と macOS／Xcode が未準備 |
+| Claude・Gemini 実モデルレビュー | 未実施 | 接続経路が未確定。Codexレビューも未実施 |
+
+## 検証結果（2026-11-17）
+
+- `dart analyze packages apps`：問題なし
+- `packages/swipe_core` の `dart test`：21件成功
+- `packages/swipe_ui` の `flutter test`：5件成功
+- `flutter build web --release`：2アプリとも成功。ブラウザー（幅400px）で、趣味仲間の成立・スワイプ・会話、仕事相談の応募・承認・成立一覧を目視確認
+- 模擬バックエンドでの合格は、実DBでの合格を意味しない
 
 ## 未決事項（ユーザーの判断が必要）
 
-1. コード作成の保留をいつ解除するか。
-2. 基盤との関係：基盤の `snapshot` は案件フォルダーの外のファイルを扱えない。基盤を外部パスに対応させるか、このリポジトリのコミットでレビュー対象を固定するか。
-3. 製品の形：1つのアプリの中で用途を切り替えるか、用途ごとに別のアプリにするか。自社サービス群向けか、他社向け（OEM／SaaS）か。
-4. 技術：Flutterで確定するか、React Native＋Expoと比較するか。サーバー（バックエンド）に何を使うか。iOSをどこでビルドするか（macOSの用意）。
+1. 実サーバーに何を使うか（Firebase、Supabase、独自API など）。
+2. 実機検証の環境：Android SDK（Android Studio）の導入、iOS 用の macOS と Xcode。
+3. 独立レビュー：Codex へのレビュー依頼の出し方（基盤の `snapshot` は外部リポジトリ非対応）と、Claude・Gemini 実モデルレビューの経路。
+4. 外部連携：Google Drive（ビジネス要求の書類）と Notion（タスク管理）のコネクター接続。GitHub への push と Issue 作成の許可。
 5. 最初の用途、市場、対象年齢。
-6. ClaudeとGeminiの実モデルレビューを、どの経路で行うか。
 
-## 次の作業（保留解除後）
+## 次の作業
 
-1. 試作を読んで評価し、共通パッケージ（コア）と用途ごとの設定に分ける構成を決める。
-2. `docs/CORE_AND_POC.md` の境界に沿って、リポジトリの構成とインターフェースを設計する。
-3. 架空データで2用途の技術検証を実装し、受け入れ条件ごとに確認する。
+1. オーナー側の応募管理画面（API は対応済み）。
+2. 実サーバー用の `MatchingApi` 実装と、同時成立・再送・ブロック競合の実DBテスト。
+3. 写真・プッシュ通知の `PlatformAdapter`（必要になった時点で Swift／Kotlin）。
+4. 実機での操作、VoiceOver／TalkBack、文字拡大の確認。

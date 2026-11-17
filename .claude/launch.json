@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hobby-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8761", "--bind", "127.0.0.1", "--directory", "apps/hobby_buddies/build/web"],
+      "port": 8761
+    },
+    {
+      "name": "work-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8762", "--bind", "127.0.0.1", "--directory", "apps/work_consult/build/web"],
+      "port": 8762
+    }
+  ]
+}

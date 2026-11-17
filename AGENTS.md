@@ -2,11 +2,12 @@
 
 このファイルは Claude Code と Codex の両方が読む共通指示です。`CLAUDE.md` はこのファイルを参照するだけです。
 
-## 最優先：コード作成は保留中
+## 実装の許可範囲
 
-- ユーザーの指示があるまで、アプリの新規実装、試作の修正、依存インストール（`flutter pub get` など）、`flutter create`、push、公開、有料API呼び出しを始めない。
-- 今できるのは、資料の確認、設計・計画の整理、この作業場所の文書整備まで。
-- 保留が解除されたら、日時と指示内容を `STATUS.md` に記録してから着手する。
+- 2026-11-17、ユーザーが「共通基盤をつくるまで進めて」と指示し、コード作成の保留を解除した。構成の既定値（用途ごとに別アプリ＋共通パッケージ、最初は模擬バックエンド）も承認済み。
+- 許可済み：共通パッケージと用途別アプリの実装、`flutter pub get`、解析、テスト、ローカルでの起動。
+- 引き続きユーザーの確認が必要：push、公開・ストア提出、有料API呼び出し、GitHub Issue の作成など外部への書き込み、Notion／Google Drive への書き込み。
+- 資料の置き場所（ユーザー指定）：ビジネス要求関連の書類は Google Drive、タスク管理は Notion、細かい開発管理は GitHub。各コネクターの接続はユーザーが行う。
 
 ## 正本と関係する場所
 
@@ -15,7 +16,10 @@
 | 成果物の正本 | このリポジトリ（`Swipe-Matching-Common`） | 設計・実装・検証・レビュー記録はここで更新する |
 | 案件記録 | `docs/SWIPE_MATCHING_CASE.md` | 案件の要件・設計・受け入れ条件・レビュー状況の正本 |
 | 共通コアと技術検証の仕様 | `docs/CORE_AND_POC.md` | v0.1の設計案。採用確定ではない |
-| 既存試作 | `prototypes/flutter_prototype/` | Codexが2026-11-17に作成。未実行・未検証。参考資料として扱い、そのまま製品コードにしない |
+| 共通基盤の構成 | `docs/ARCHITECTURE.md` | パッケージの境界、共通と用途別の分担、未対応範囲 |
+| 共通パッケージ | `packages/swipe_core`（純Dart）、`packages/swipe_ui`（Flutter） | 用途に依存するコードを入れない |
+| 用途別アプリ | `apps/hobby_buddies`、`apps/work_consult` | `main.dart` で設定と見た目だけを選ぶ |
+| 既存試作 | `prototypes/flutter_prototype/` | Codexが2026-11-17に作成。参考資料。ビルド対象外 |
 | 移管記録 | `docs/MIGRATION.md` | コピー元、サイズ、SHA256、未移管の範囲 |
 | 基盤の案件 | `C:\Users\hikar\Documents\ChatGPT\AI駆動×AI駆動\app-relay\cases\case-fb506404bfa84fc598380fe9564ea28e` | 編集権・停止と再開・担当予定・コメントの管理に使う。成果物の正本ではない |
 | 移管前の資料 | `C:\Users\hikar\Documents\ChatGPT\ITコンサル・エンジニア\projects\swipe-matching` | 移行前の控え。更新しない |
@@ -63,6 +67,13 @@
 - iPhoneとAndroidの実機結果を、対象の版とともに記録する。
 - ClaudeとGeminiの実モデルレビューと、指摘への対応記録を残す。重大な指摘は解消して再確認を受ける。
 - 実施していない項目は `STATUS.md` に未実施と明記する。初回の検証には架空データを使う。
+
+## 開発メモ
+
+- Flutter 3.50（Dart 3.14）。Material は `package:material_ui/material_ui.dart` から読み込む（`package:flutter/material.dart` は非推奨）。
+- ルートの `pubspec.yaml` は pub workspace。依存はルートで `flutter pub get` すれば全体が解決する。
+- 意思表示の型は `SwipeIntent`（Flutterの `Intent` と名前が衝突するため）。
+- 確認コマンド：`dart analyze packages apps`、`packages/swipe_core` で `dart test`、`packages/swipe_ui` で `flutter test`。
 
 ## 共通ルール
 

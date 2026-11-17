@@ -1,0 +1,25 @@
+name: hobby_buddies
+description: "趣味仲間: person-to-person sample app on the shared swipe-matching platform."
+publish_to: none
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  material_ui: ^1.1.0
+  swipe_core:
+    path: ../../packages/swipe_core
+  swipe_ui:
+    path: ../../packages/swipe_ui
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,12 @@
+name: swipe_matching_workspace
+description: Monorepo for the shared swipe-matching platform and its per-use apps.
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+workspace:
+  - packages/swipe_core
+  - packages/swipe_ui
+  - apps/hobby_buddies
+  - apps/work_consult
