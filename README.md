@@ -17,17 +17,13 @@ iPhone／Android 向けスワイプマッチングアプリを複数作るため
 flutter pub get
 ```
 
-```bash
-dart analyze packages apps
-```
+解析とテストはまとめて実行できます（Windows）。
 
 ```bash
-cd packages/swipe_core && dart test
+powershell -NoProfile -File tools/check.ps1
 ```
 
-```bash
-cd packages/swipe_ui && flutter test
-```
+個別に実行する場合：`dart analyze packages apps`、`packages/swipe_core` で `dart test`、`packages/swipe_ui` で `flutter test`。
 
 ```bash
 cd apps/hobby_buddies && flutter run -d chrome
