@@ -219,16 +219,21 @@ class ApplicationsController extends ChangeNotifier {
   /// Application ids with a decision in flight (buttons are disabled).
   final Set<String> busy = {};
 
-  /// Set when an approval created a match, for announcing it.
-  Match? lastMatch;
+  int _refreshVersion = 0;
+  bool _disposed = false;
 
   Future<void> refresh() async {
+    if (_disposed) return;
+    final version = ++_refreshVersion;
     try {
       final apps = await api.listIncomingApplications()
         ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      entries = [for (final a in apps) await _entry(a)];
+      final loaded = [for (final a in apps) await _entry(a)];
+      if (_disposed || version != _refreshVersion) return;
+      entries = loaded;
       error = null;
     } catch (e) {
+      if (_disposed || version != _refreshVersion) return;
       error = describeFailure(e);
     }
     notifyListeners();
@@ -246,42 +251,42 @@ class ApplicationsController extends ChangeNotifier {
     return ApplicationEntry(a, name, title);
   }
 
-  Future<void> approve(ApplicationEntry entry) => _decide(
-      entry,
-      () async =>
-          lastMatch = await api.approveApplication(entry.application.id));
+  Future<Match?> approve(ApplicationEntry entry) =>
+      _decide(entry, () => api.approveApplication(entry.application.id));
 
-  Future<void> decline(ApplicationEntry entry) =>
-      _decide(entry, () => api.declineApplication(entry.application.id));
+  Future<void> decline(ApplicationEntry entry) async {
+    await _decide(entry, () async {
+      await api.declineApplication(entry.application.id);
+      return null;
+    });
+  }
 
-  Future<void> _decide(
-      ApplicationEntry entry, Future<void> Function() action) async {
+  Future<Match?> _decide(
+      ApplicationEntry entry, Future<Match?> Function() action) async {
     final id = entry.application.id;
-    if (busy.contains(id)) return;
-    busy.add(id);
+    if (_disposed || !busy.add(id)) return null;
     error = null;
     notifyListeners();
+    Match? match;
+    String? failure;
     try {
-      await action();
-    } on ForbiddenFailure catch (e) {
-      // Already decided (e.g. an earlier attempt committed but its response
-      // was lost) or the applicant is no longer available: refresh the list.
-      error = describeFailure(e);
+      match = await action();
     } catch (e) {
-      error = describeFailure(e);
-    } finally {
-      busy.remove(id);
+      failure = describeFailure(e);
     }
-    final failure = error;
+    // Reload even after an error. The server may have committed the decision.
     await refresh();
-    if (failure != null && error == null) {
-      error = failure; // keep the decision's error visible after the refresh
+    busy.remove(id);
+    if (!_disposed) {
+      if (failure != null) error = failure;
       notifyListeners();
     }
+    return match;
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _events.cancel();
     super.dispose();
   }

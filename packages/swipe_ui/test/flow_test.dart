@@ -22,6 +22,31 @@ Future<void> _start(WidgetTester tester, DemoWorld world, String name) async {
 }
 
 void main() {
+  test('overlapping approvals return the outcome for each application', () async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    final controller = ApplicationsController(world.api);
+    addTearDown(() async {
+      controller.dispose();
+      await world.dispose();
+    });
+    await controller.refresh();
+    final first = controller.entries[0];
+    final second = controller.entries[1];
+
+    world.server.injectFault(Fault.beforeCommit);
+    final results = await Future.wait([
+      controller.approve(first),
+      controller.approve(second),
+    ]);
+
+    expect(results[0], isNull);
+    expect(results[1]?.otherParty(world.meId), second.application.applicantId);
+    expect(controller.entries.map((entry) => entry.application.id),
+        contains(first.application.id));
+    expect(controller.entries.map((entry) => entry.application.id),
+        isNot(contains(second.application.id)));
+  });
+
   testWidgets(
       'hobby: button like matches, chat works, passed card never matches',
       (tester) async {

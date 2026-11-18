@@ -378,11 +378,9 @@ class ApplicationsScreen extends StatelessWidget {
   final VoidCallback onMatched;
 
   Future<void> _approve(BuildContext context, ApplicationEntry e) async {
-    final messenger = ScaffoldMessenger.of(context);
-    controller.lastMatch = null;
-    await controller.approve(e);
-    if (controller.lastMatch != null) {
-      messenger.showSnackBar(SnackBar(
+    final match = await controller.approve(e);
+    if (context.mounted && match != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${e.applicantName}さんの応募を承認しました。成立したので会話できます。'),
         action: SnackBarAction(label: '会話へ', onPressed: onMatched),
       ));
@@ -405,7 +403,7 @@ class ApplicationsScreen extends StatelessWidget {
         ],
       ),
     );
-    if (ok == true) await controller.decline(e);
+    if (context.mounted && ok == true) await controller.decline(e);
   }
 
   @override
