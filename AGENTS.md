@@ -59,7 +59,7 @@
 | --- | --- |
 | 作業の前 | `python <データ>\ai_org.py start --case case-fb506404bfa84fc598380fe9564ea28e --agent "<担当> Swipe-Matching-Common <会話の識別子>" [--token-file <パス>]` |
 | コミット・push | git と同じコマンドの中で `$env:AI_ORG_TOKEN_FILE = "<トークンファイル>"` を設定する |
-| 作業の後 | `python C:\Users\hikar\AppData\Local\ai-org\v0.2.0\extensions\dev\dev.py finish --project . --token-file <トークンファイル>`（`tools/check.ps1`、両方の STATUS.md、未コミットを確認してから編集権を返す） |
+| 作業の後 | `python C:\Users\hikar\AppData\Local\ai-org\v0.2.1\extensions\dev\dev.py finish --project . --token-file <トークンファイル>`（`tools/check.ps1`、両方の STATUS.md、未コミットを確認してから編集権を返す） |
 
 - `<データ>` は `C:\Users\hikar\Documents\ChatGPT\AI駆動×AI駆動\app-relay`。Claude Code は `--token-file` に会話用の一時フォルダーの `ai-org-case-fb506404bfa84fc598380fe9564ea28e.token` を指定する。
 - 編集権がないと、Claude Code の Edit／Write と、すべての担当のコミット・push が止まる（git の共通設定 core.hooksPath と Claude Code のユーザー設定）。止められたら表示に従う。分からないとき・編集権を取得できないときは、回避せずに利用者に確認する。

@@ -22,7 +22,8 @@ Future<void> _start(WidgetTester tester, DemoWorld world, String name) async {
 }
 
 void main() {
-  testWidgets('hobby: button like matches, chat works, passed card never matches',
+  testWidgets(
+      'hobby: button like matches, chat works, passed card never matches',
       (tester) async {
     final world = DemoWorld.hobby(peerDelay: Duration.zero);
     await _start(tester, world, '趣味仲間');
@@ -54,7 +55,8 @@ void main() {
     await tester.runAsync(world.dispose);
   });
 
-  testWidgets('hobby: swiping right on someone who has not liked back only records',
+  testWidgets(
+      'hobby: swiping right on someone who has not liked back only records',
       (tester) async {
     final world = DemoWorld.hobby(peerDelay: Duration.zero);
     await _start(tester, world, '趣味仲間');
@@ -66,12 +68,14 @@ void main() {
     await tester.runAsync(world.dispose);
   });
 
-  testWidgets('work: approved application matches, unapproved one stays pending',
+  testWidgets(
+      'work: approved application matches, unapproved one stays pending',
       (tester) async {
     final world = DemoWorld.work(ownerDelay: Duration.zero);
     await _start(tester, world, '仕事相談');
     expect(find.text('相談内容'), findsOneWidget);
-    await tester.drag(find.byType(SwipeCard), const Offset(400, 0)); // listing_0
+    await tester.drag(
+        find.byType(SwipeCard), const Offset(400, 0)); // listing_0
     await _settle(tester);
     expect(find.text('応募しました。承認されると成立します'), findsOneWidget);
     await tester.tap(find.text('応募する')); // listing_1, never approved
@@ -84,7 +88,71 @@ void main() {
     await tester.runAsync(world.dispose);
   });
 
-  testWidgets('chat: lost response shows retry and resending stores one message',
+  testWidgets(
+      'work owner: approve opens a match, decline asks first, hobby has no tab',
+      (tester) async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    await _start(tester, world, '仕事相談');
+    await tester.tap(find.text('届いた応募'));
+    await _settle(tester);
+    expect(find.text('架空 相談員あ'), findsOneWidget);
+    expect(find.text('「あなたの相談（試用）」への応募'), findsNWidgets(3));
+
+    await tester.tap(find.text('承認する').first);
+    await _settle(tester);
+    expect(find.textContaining('架空 相談員あさんの応募を承認しました'), findsOneWidget);
+    expect(find.text('架空 相談員あ'), findsNothing);
+
+    // Decline needs confirmation; "戻る" keeps the application.
+    await tester.tap(find.text('見送る').first);
+    await _settle(tester);
+    expect(find.text('応募を見送りますか'), findsOneWidget);
+    await tester.tap(find.text('戻る'));
+    await _settle(tester);
+    expect(find.text('架空 相談員い'), findsOneWidget);
+    await tester.tap(find.text('見送る').first);
+    await _settle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, '見送る'));
+    await _settle(tester);
+    expect(find.text('架空 相談員い'), findsNothing);
+    expect(await tester.runAsync(world.api.listIncomingApplications),
+        hasLength(1));
+
+    // The approved applicant appears in matches and has greeted.
+    await tester.tap(find.text('成立・会話'));
+    await _settle(tester);
+    await tester.tap(find.text('架空 相談員あ（あなたの相談（試用））'));
+    await _settle(tester);
+    expect(find.text('承認ありがとうございます。よろしくお願いします。'), findsOneWidget);
+    await tester.runAsync(world.dispose);
+  });
+
+  testWidgets('work owner: lost approval response does not create two matches',
+      (tester) async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    await _start(tester, world, '仕事相談');
+    await tester.tap(find.text('届いた応募'));
+    await _settle(tester);
+    world.server.injectFault(Fault.afterCommit);
+    await tester.tap(find.text('承認する').first);
+    await _settle(tester);
+    expect(find.text('通信結果を確認できませんでした。再送しても重複しません。'), findsOneWidget);
+    expect(find.text('架空 相談員あ'), findsNothing); // committed; refreshed away
+    final matches = await tester.runAsync(world.api.listMatches);
+    expect(matches!.where((m) => m.candidateId == myListingId), hasLength(1));
+    await tester.runAsync(world.dispose);
+  });
+
+  testWidgets('hobby: no owner tab for mutual-interest services',
+      (tester) async {
+    final world = DemoWorld.hobby(peerDelay: Duration.zero);
+    await _start(tester, world, '趣味仲間');
+    expect(find.text('届いた応募'), findsNothing);
+    await tester.runAsync(world.dispose);
+  });
+
+  testWidgets(
+      'chat: lost response shows retry and resending stores one message',
       (tester) async {
     final world = DemoWorld.hobby(peerDelay: Duration.zero);
     await _start(tester, world, '趣味仲間');

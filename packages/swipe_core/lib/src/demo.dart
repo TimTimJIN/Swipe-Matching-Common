@@ -26,14 +26,18 @@ class DemoWorld {
     final config = hobbyConfig;
     server.registerService(config);
     const meId = 'hobby_me';
-    server.addMember(const Member(
-        id: meId, serviceId: 'hobby', displayName: 'あなた（試用）'));
+    server.addMember(
+        const Member(id: meId, serviceId: 'hobby', displayName: 'あなた（試用）'));
     server.addCard(const Candidate(
       id: 'card_hobby_me',
       serviceId: 'hobby',
       ownerId: meId,
       title: 'あなた（試用）',
-      attributes: {'hobbies': ['散歩'], 'area': '東京', 'intro': '試用中の会員です。'},
+      attributes: {
+        'hobbies': ['散歩'],
+        'area': '東京',
+        'intro': '試用中の会員です。'
+      },
     ));
     for (final (i, p) in _hobbyPeople.indexed) {
       final id = 'hobby_p$i';
@@ -56,8 +60,7 @@ class DemoWorld {
         Timer(peerDelay, () {
           server
               .clientFor(peer)
-              .sendMessage(match.id, 'はじめまして！よろしくお願いします。',
-                  'greet-${match.id}')
+              .sendMessage(match.id, 'はじめまして！よろしくお願いします。', 'greet-${match.id}')
               .ignore();
         });
       }
@@ -72,12 +75,12 @@ class DemoWorld {
     final config = workConfig;
     server.registerService(config);
     const meId = 'work_me';
-    server.addMember(const Member(
-        id: meId, serviceId: 'work', displayName: 'あなた（試用）'));
+    server.addMember(
+        const Member(id: meId, serviceId: 'work', displayName: 'あなた（試用）'));
     for (final (i, l) in _workListings.indexed) {
       final ownerId = 'work_owner$i';
-      server.addMember(
-          Member(id: ownerId, serviceId: 'work', displayName: l.$5));
+      server
+          .addMember(Member(id: ownerId, serviceId: 'work', displayName: l.$5));
       server.addCard(Candidate(
         id: 'listing_$i',
         serviceId: 'work',
@@ -86,8 +89,40 @@ class DemoWorld {
         attributes: {'field': l.$2, 'request': l.$3, 'terms': l.$4},
       ));
     }
+    // "Me" also owns one listing, so the owner side (incoming applications)
+    // can be tried: fictional applicants have already applied to it.
+    server.addCard(const Candidate(
+      id: myListingId,
+      serviceId: 'work',
+      ownerId: meId,
+      title: 'あなたの相談（試用）',
+      attributes: {
+        'field': ['業務改善'],
+        'request': '試用中の相談です。届いた応募を承認すると成立し、会話できます。',
+        'terms': 'オンライン・単発',
+      },
+    ));
+    for (final (i, name) in _workApplicants.indexed) {
+      final id = 'work_applicant$i';
+      server.addMember(Member(id: id, serviceId: 'work', displayName: name));
+      server.seedDecision(id, myListingId, SwipeIntent.positive);
+    }
     final sim = server.serverEvents.listen((event) {
+      if (event case MatchCreated(:final match)
+          when match.candidateId == myListingId) {
+        // The applicant greets once "me" approves.
+        final applicant = match.otherParty(meId);
+        Timer(ownerDelay, () {
+          server
+              .clientFor(applicant)
+              .sendMessage(
+                  match.id, '承認ありがとうございます。よろしくお願いします。', 'greet-${match.id}')
+              .ignore();
+        });
+        return;
+      }
       if (event case ApplicationReceived(:final application)) {
+        if (application.listingId == myListingId) return;
         final index = int.parse(application.listingId.split('_').last);
         if (!_workAutoApprove.contains(index)) return;
         Timer(ownerDelay, () {
@@ -108,9 +143,12 @@ const hobbyConfig = ServiceConfig(
   displayName: '趣味仲間',
   targetKind: TargetKind.member,
   fields: [
-    FieldSpec(key: 'hobbies', label: '趣味', kind: FieldKind.tags, required: true),
-    FieldSpec(key: 'area', label: '地域', kind: FieldKind.shortText, required: true),
-    FieldSpec(key: 'intro', label: '紹介文', kind: FieldKind.longText, maxLength: 500),
+    FieldSpec(
+        key: 'hobbies', label: '趣味', kind: FieldKind.tags, required: true),
+    FieldSpec(
+        key: 'area', label: '地域', kind: FieldKind.shortText, required: true),
+    FieldSpec(
+        key: 'intro', label: '紹介文', kind: FieldKind.longText, maxLength: 500),
   ],
   intentLabels: IntentLabels(positive: '興味あり', negative: '見送り'),
   matchRule: MatchRuleId.mutualInterest,
@@ -124,7 +162,12 @@ const workConfig = ServiceConfig(
   targetKind: TargetKind.listing,
   fields: [
     FieldSpec(key: 'field', label: '分野', kind: FieldKind.tags, required: true),
-    FieldSpec(key: 'request', label: '相談内容', kind: FieldKind.longText, required: true, maxLength: 800),
+    FieldSpec(
+        key: 'request',
+        label: '相談内容',
+        kind: FieldKind.longText,
+        required: true,
+        maxLength: 800),
     FieldSpec(key: 'terms', label: '稼働条件', kind: FieldKind.shortText),
   ],
   intentLabels: IntentLabels(positive: '応募する', negative: '見送り'),
@@ -159,13 +202,48 @@ const _hobbyPeople = <(String, List<String>, String, String)>[
 
 const _workAutoApprove = {0, 2, 5, 9, 14};
 
+/// The listing "me" owns in the work demo.
+const myListingId = 'listing_me';
+
+const _workApplicants = ['架空 相談員あ', '架空 相談員い', '架空 相談員う'];
+
 const _workListings = <(String, List<String>, String, String, String)>[
-  ('問い合わせの一次対応を整理', ['業務改善'], '小規模事業者の問い合わせ対応を見直す、初回の業務整理を相談したいです。', 'オンライン・週1回', '架空商店A'),
-  ('採用サイトの改善案を作成', ['Web企画'], '応募者が必要な情報に迷わずたどり着ける構成を検討しています。', 'オンライン・2週間', '架空工務店B'),
-  ('在庫表の自動集計', ['表計算', '業務改善'], '手作業の在庫集計を、表計算の関数で楽にしたいです。', 'オンライン・単発', '架空雑貨店C'),
-  ('SNS投稿の運用ルール作り', ['広報'], '担当者が交代しても続けられる投稿ルールを作りたいです。', 'オンライン・月2回', '架空カフェD'),
+  (
+    '問い合わせの一次対応を整理',
+    ['業務改善'],
+    '小規模事業者の問い合わせ対応を見直す、初回の業務整理を相談したいです。',
+    'オンライン・週1回',
+    '架空商店A'
+  ),
+  (
+    '採用サイトの改善案を作成',
+    ['Web企画'],
+    '応募者が必要な情報に迷わずたどり着ける構成を検討しています。',
+    'オンライン・2週間',
+    '架空工務店B'
+  ),
+  (
+    '在庫表の自動集計',
+    ['表計算', '業務改善'],
+    '手作業の在庫集計を、表計算の関数で楽にしたいです。',
+    'オンライン・単発',
+    '架空雑貨店C'
+  ),
+  (
+    'SNS投稿の運用ルール作り',
+    ['広報'],
+    '担当者が交代しても続けられる投稿ルールを作りたいです。',
+    'オンライン・月2回',
+    '架空カフェD'
+  ),
   ('会計ソフトの初期設定', ['経理'], '開業したばかりで、会計ソフトの設定を相談したいです。', '対面可・東京', '架空事務所E'),
-  ('予約フォームの見直し', ['Web企画'], '予約の取りこぼしを減らすフォームの改善点を知りたいです。', 'オンライン・単発', '架空整体院F'),
+  (
+    '予約フォームの見直し',
+    ['Web企画'],
+    '予約の取りこぼしを減らすフォームの改善点を知りたいです。',
+    'オンライン・単発',
+    '架空整体院F'
+  ),
   ('研修資料の構成相談', ['教育'], '新人向け研修資料の章立てを一緒に考えてほしいです。', 'オンライン・3回', '架空保育園G'),
   ('補助金申請の準備手順', ['経営'], '申請書を書く前の準備手順を整理したいです。', 'オンライン・単発', '架空製作所H'),
   ('ECサイトの商品写真', ['撮影'], '商品写真の撮り方を基本から教えてほしいです。', '対面可・神奈川', '架空工房I'),
@@ -179,5 +257,11 @@ const _workListings = <(String, List<String>, String, String, String)>[
   ('動画の撮影と編集', ['撮影'], '紹介動画を自分たちで作る方法を知りたいです。', '対面可・埼玉', '架空農園Q'),
   ('メールの定型文作成', ['業務改善'], 'よくある問い合わせへの返信文を整えたいです。', 'オンライン・単発', '架空旅館R'),
   ('イベント集客の計画', ['広報'], '小規模イベントの集客計画を立てたいです。', 'オンライン・月1回', '架空ギャラリーS'),
-  ('業務マニュアルの整備', ['教育', '業務改善'], '属人化している作業をマニュアルにしたいです。', 'オンライン・1か月', '架空運送T'),
+  (
+    '業務マニュアルの整備',
+    ['教育', '業務改善'],
+    '属人化している作業をマニュアルにしたいです。',
+    'オンライン・1か月',
+    '架空運送T'
+  ),
 ];

@@ -17,8 +17,8 @@ class AppBranding {
   final IconData? cardIcon;
 
   ThemeData theme(Brightness brightness) => ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-            seedColor: seedColor, brightness: brightness),
+        colorScheme:
+            ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness),
         useMaterial3: true,
       );
 }
@@ -63,6 +63,7 @@ class _Shell extends StatefulWidget {
 class _ShellState extends State<_Shell> {
   late final DiscoverController _discover = DiscoverController(widget.api);
   MatchesController? _matches;
+  ApplicationsController? _applications;
   Member? _me;
   int _tab = 0;
   bool _signedOut = false;
@@ -82,6 +83,10 @@ class _ShellState extends State<_Shell> {
       setState(() {
         _me = me;
         _matches = MatchesController(widget.api, me.id, config)..refresh();
+        // Owner-approval services also get the owner side (incoming applications).
+        if (config.matchRule == MatchRuleId.ownerApproval) {
+          _applications = ApplicationsController(widget.api)..refresh();
+        }
       });
     } catch (_) {
       // Discover screen shows the load error.
@@ -92,6 +97,7 @@ class _ShellState extends State<_Shell> {
   void dispose() {
     _discover.dispose();
     _matches?.dispose();
+    _applications?.dispose();
     super.dispose();
   }
 
@@ -102,6 +108,7 @@ class _ShellState extends State<_Shell> {
           body: Center(child: Text('退会しました。ご利用ありがとうございました。')));
     }
     final matches = _matches;
+    final applications = _applications;
     final pages = [
       DiscoverScreen(
           controller: _discover,
@@ -111,12 +118,17 @@ class _ShellState extends State<_Shell> {
         MatchesScreen(controller: matches, config: _discover.config!)
       else
         const Center(child: CircularProgressIndicator()),
+      if (applications != null)
+        ApplicationsScreen(
+            controller: applications,
+            onMatched: () => setState(() => _tab = 1)),
       SettingsScreen(
         api: widget.api,
         me: _me,
         onWithdrawn: () => setState(() => _signedOut = true),
       ),
     ];
+    final tab = _tab < pages.length ? _tab : 0;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.branding.appName),
@@ -127,7 +139,8 @@ class _ShellState extends State<_Shell> {
                 child: Container(
                   width: double.infinity,
                   color: Theme.of(context).colorScheme.tertiaryContainer,
-                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
                   child: Text(widget.banner!,
                       style: TextStyle(
                           color: Theme.of(context)
@@ -136,17 +149,30 @@ class _ShellState extends State<_Shell> {
                 ),
               ),
       ),
-      body: SafeArea(child: pages[_tab]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.style_outlined), label: '探す'),
-          NavigationDestination(
-              icon: Icon(Icons.forum_outlined), label: '成立・会話'),
-          NavigationDestination(
-              icon: Icon(Icons.settings_outlined), label: '設定'),
-        ],
+      body: SafeArea(child: pages[tab]),
+      // Rebuild the bar when the number of applications changes (badge).
+      bottomNavigationBar: ListenableBuilder(
+        listenable: applications ?? _discover,
+        builder: (context, _) => NavigationBar(
+          selectedIndex: tab,
+          onDestinationSelected: (i) => setState(() => _tab = i),
+          destinations: [
+            const NavigationDestination(
+                icon: Icon(Icons.style_outlined), label: '探す'),
+            const NavigationDestination(
+                icon: Icon(Icons.forum_outlined), label: '成立・会話'),
+            if (applications != null)
+              NavigationDestination(
+                  icon: Badge(
+                    isLabelVisible: applications.entries.isNotEmpty,
+                    label: Text('${applications.entries.length}'),
+                    child: const Icon(Icons.inbox_outlined),
+                  ),
+                  label: '届いた応募'),
+            const NavigationDestination(
+                icon: Icon(Icons.settings_outlined), label: '設定'),
+          ],
+        ),
       ),
     );
   }
@@ -220,7 +246,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         if (c.state == LoadState.failed) {
           return _Message(
               text: c.error ?? '読み込めませんでした。',
-              action: FilledButton(onPressed: c.load, child: const Text('再読み込み')));
+              action:
+                  FilledButton(onPressed: c.load, child: const Text('再読み込み')));
         }
         final config = c.config!;
         final card = c.current;
@@ -330,11 +357,119 @@ class MatchesScreen extends StatelessWidget {
                     ScaffoldMessenger.of(context).clearSnackBars();
                     Navigator.of(context).push(MaterialPageRoute<void>(
                       builder: (_) => ChatScreen(
-                          api: controller.api,
-                          entry: e,
-                          meId: controller.meId),
+                          api: controller.api, entry: e, meId: controller.meId),
                     ));
                   },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Owner side of owner-approval services: approve or decline applications
+/// to my listings. Approving creates a match and opens the conversation.
+class ApplicationsScreen extends StatelessWidget {
+  const ApplicationsScreen(
+      {super.key, required this.controller, required this.onMatched});
+  final ApplicationsController controller;
+  final VoidCallback onMatched;
+
+  Future<void> _approve(BuildContext context, ApplicationEntry e) async {
+    final messenger = ScaffoldMessenger.of(context);
+    controller.lastMatch = null;
+    await controller.approve(e);
+    if (controller.lastMatch != null) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('${e.applicantName}さんの応募を承認しました。成立したので会話できます。'),
+        action: SnackBarAction(label: '会話へ', onPressed: onMatched),
+      ));
+    }
+  }
+
+  Future<void> _decline(BuildContext context, ApplicationEntry e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('応募を見送りますか'),
+        content: Text('${e.applicantName}さんの応募を見送ります。相手に成立は通知されません。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('戻る')),
+          FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('見送る')),
+        ],
+      ),
+    );
+    if (ok == true) await controller.decline(e);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final error = controller.error;
+        if (controller.entries.isEmpty) {
+          return _Message(
+              text: error ?? 'あなたの募集に届いた応募が、ここに表示されます。',
+              action: error == null
+                  ? null
+                  : FilledButton(
+                      onPressed: controller.refresh,
+                      child: const Text('再読み込み')));
+        }
+        return RefreshIndicator(
+          onRefresh: controller.refresh,
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(error,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
+                ),
+              for (final e in controller.entries)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(e.applicantName,
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text('「${e.listingTitle}」への応募'),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed:
+                                  controller.busy.contains(e.application.id)
+                                      ? null
+                                      : () => _decline(context, e),
+                              child: const Text('見送る'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed:
+                                  controller.busy.contains(e.application.id)
+                                      ? null
+                                      : () => _approve(context, e),
+                              child: const Text('承認する'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -471,12 +606,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         text: o.body,
                         mine: true,
                         colors: colors,
-                        status: o.state == OutgoingState.sending
-                            ? '送信中…'
-                            : o.error,
-                        onRetry: o.state == OutgoingState.failed && !_chat.closed
-                            ? () => _chat.retry(o)
-                            : null,
+                        status:
+                            o.state == OutgoingState.sending ? '送信中…' : o.error,
+                        onRetry:
+                            o.state == OutgoingState.failed && !_chat.closed
+                                ? () => _chat.retry(o)
+                                : null,
                         onDiscard: o.state == OutgoingState.failed
                             ? () => _chat.discard(o)
                             : null,
@@ -546,15 +681,15 @@ class _Bubble extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         constraints: const BoxConstraints(maxWidth: 360),
         decoration: BoxDecoration(
-          color: mine ? colors.primaryContainer : colors.surfaceContainerHighest,
+          color:
+              mine ? colors.primaryContainer : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Semantics(
-                label: mine ? '自分' : '相手', child: Text(text)),
+            Semantics(label: mine ? '自分' : '相手', child: Text(text)),
             if (status != null)
               Text(status!, style: Theme.of(context).textTheme.bodySmall),
             if (onRetry != null || onDiscard != null)
@@ -573,7 +708,10 @@ class _Bubble extends StatelessWidget {
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen(
-      {super.key, required this.api, required this.me, required this.onWithdrawn});
+      {super.key,
+      required this.api,
+      required this.me,
+      required this.onWithdrawn});
   final MatchingApi api;
   final Member? me;
   final VoidCallback onWithdrawn;

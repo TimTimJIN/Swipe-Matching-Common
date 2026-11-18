@@ -10,7 +10,10 @@ InMemoryServer _hobbyServer() {
         serviceId: 'hobby',
         ownerId: id,
         title: id,
-        attributes: const {'hobbies': ['x'], 'area': 'y'}));
+        attributes: const {
+          'hobbies': ['x'],
+          'area': 'y'
+        }));
   }
   return s;
 }
@@ -25,7 +28,10 @@ InMemoryServer _workServer() {
       serviceId: 'work',
       ownerId: 'owner',
       title: 'job',
-      attributes: {'field': ['x'], 'request': 'y'}));
+      attributes: {
+        'field': ['x'],
+        'request': 'y'
+      }));
   return s;
 }
 
@@ -75,7 +81,8 @@ void main() {
       final s = _hobbyServer();
       final a = s.clientFor('a');
       final first = await a.fetchCandidates(limit: 1);
-      final second = await a.fetchCandidates(cursor: first.nextCursor, limit: 1);
+      final second =
+          await a.fetchCandidates(cursor: first.nextCursor, limit: 1);
       expect([...first.items, ...second.items].map((c) => c.id),
           ['card_b', 'card_c']);
       expect(second.nextCursor, isNull);
@@ -143,11 +150,13 @@ void main() {
     test('non-participants cannot read or send', () async {
       final s = _hobbyServer();
       await s.clientFor('b').submitInteraction(like('card_a', 'x'));
-      final match = (await s.clientFor('a').submitInteraction(like('card_b', 'y')))
-          .match!;
+      final match =
+          (await s.clientFor('a').submitInteraction(like('card_b', 'y')))
+              .match!;
       final c = s.clientFor('c');
       expect(c.messages(match.id), throwsA(isA<ForbiddenFailure>()));
-      expect(c.sendMessage(match.id, 'hi', 'k'), throwsA(isA<ForbiddenFailure>()));
+      expect(
+          c.sendMessage(match.id, 'hi', 'k'), throwsA(isA<ForbiddenFailure>()));
     });
 
     test('block is ordered before send and closes the match', () async {
@@ -156,7 +165,8 @@ void main() {
       final a = s.clientFor('a');
       final match = (await a.submitInteraction(like('card_b', 'y'))).match!;
       await s.clientFor('b').block('a');
-      expect(a.sendMessage(match.id, 'hi', 'k'), throwsA(isA<ForbiddenFailure>()));
+      expect(
+          a.sendMessage(match.id, 'hi', 'k'), throwsA(isA<ForbiddenFailure>()));
       expect(await a.listMatches(), isEmpty);
       expect((await a.fetchCandidates()).items.map((c) => c.id),
           isNot(contains('card_b')));
@@ -164,9 +174,11 @@ void main() {
 
     test('suspended members disappear from the deck', () async {
       final s = _hobbyServer()..suspend('b');
-      final ids = (await s.clientFor('a').fetchCandidates()).items.map((c) => c.id);
+      final ids =
+          (await s.clientFor('a').fetchCandidates()).items.map((c) => c.id);
       expect(ids, ['card_c']);
-      expect(s.clientFor('b').fetchCandidates(), throwsA(isA<ForbiddenFailure>()));
+      expect(
+          s.clientFor('b').fetchCandidates(), throwsA(isA<ForbiddenFailure>()));
     });
 
     test('withdrawal closes matches and hides cards', () async {
@@ -209,7 +221,8 @@ void main() {
     test('only the listing owner can approve', () async {
       final s = _workServer();
       await s.clientFor('applicant').submitInteraction(like('job', 'k'));
-      final app = (await s.clientFor('owner').listIncomingApplications()).single;
+      final app =
+          (await s.clientFor('owner').listIncomingApplications()).single;
       expect(s.clientFor('stranger').approveApplication(app.id),
           throwsA(isA<ForbiddenFailure>()));
       expect(s.clientFor('applicant').approveApplication(app.id),
@@ -279,6 +292,36 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final matches = await world.api.listMatches();
       expect(matches.map((m) => m.candidateId), ['listing_0']);
+      await world.dispose();
+    });
+
+    test('work demo: "me" owns a listing with fictional applications to decide',
+        () async {
+      final world = DemoWorld.work(ownerDelay: Duration.zero);
+      final apps = await world.api.listIncomingApplications();
+      expect(apps, hasLength(3));
+      expect(apps.every((a) => a.listingId == myListingId), isTrue);
+      // The owner can see who applied, but not other members.
+      final applicant = await world.api.member(apps.first.applicantId);
+      expect(applicant.displayName, startsWith('架空'));
+      expect(world.api.member('work_applicant_unknown'),
+          throwsA(isA<ForbiddenFailure>()));
+      final match = await world.api.approveApplication(apps.first.id);
+      await world.api.declineApplication(apps[1].id);
+      expect(await world.api.listIncomingApplications(), hasLength(1));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final greeting = await world.api.messages(match.id);
+      expect(greeting.single.senderId, apps.first.applicantId);
+      await world.dispose();
+    });
+
+    test('a decided applicant is no longer visible through the application',
+        () async {
+      final world = DemoWorld.work(ownerDelay: Duration.zero);
+      final app = (await world.api.listIncomingApplications())[2];
+      await world.api.declineApplication(app.id);
+      expect(
+          world.api.member(app.applicantId), throwsA(isA<ForbiddenFailure>()));
       await world.dispose();
     });
   });

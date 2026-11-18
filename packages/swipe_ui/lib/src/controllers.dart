@@ -7,9 +7,8 @@ import 'package:swipe_core/swipe_core.dart';
 final _random = Random.secure();
 
 /// Random key for idempotent requests.
-String newRequestKey() =>
-    List.generate(16, (_) => _random.nextInt(256).toRadixString(16).padLeft(2, '0'))
-        .join();
+String newRequestKey() => List.generate(
+    16, (_) => _random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 
 /// User-facing text for a failure.
 String describeFailure(Object error) => switch (error) {
@@ -177,10 +176,108 @@ class MatchesController extends ChangeNotifier {
     final other = m.otherParty(meId);
     if (config.targetKind == TargetKind.listing) {
       final card = await api.candidate(m.candidateId);
+      if (card.ownerId == meId) {
+        // Owner side: several applicants may match one listing, so name them.
+        final applicant = await api.member(other);
+        return MatchEntry(m, '${applicant.displayName}（${card.title}）', other);
+      }
       return MatchEntry(m, card.title, other);
     }
     final member = await api.member(other);
     return MatchEntry(m, member.displayName, other);
+  }
+
+  @override
+  void dispose() {
+    _events.cancel();
+    super.dispose();
+  }
+}
+
+/// One incoming application, with names resolved for display.
+class ApplicationEntry {
+  const ApplicationEntry(
+      this.application, this.applicantName, this.listingTitle);
+  final Application application;
+  final String applicantName;
+  final String listingTitle;
+}
+
+/// Owner side of owner-approval services: applications to my listings.
+class ApplicationsController extends ChangeNotifier {
+  ApplicationsController(this.api) {
+    _events = api.events().listen((event) {
+      if (event is ApplicationReceived || event is MatchCreated) refresh();
+    });
+  }
+
+  final MatchingApi api;
+  late final StreamSubscription<MatchingEvent> _events;
+  List<ApplicationEntry> entries = const [];
+  String? error;
+
+  /// Application ids with a decision in flight (buttons are disabled).
+  final Set<String> busy = {};
+
+  /// Set when an approval created a match, for announcing it.
+  Match? lastMatch;
+
+  Future<void> refresh() async {
+    try {
+      final apps = await api.listIncomingApplications()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      entries = [for (final a in apps) await _entry(a)];
+      error = null;
+    } catch (e) {
+      error = describeFailure(e);
+    }
+    notifyListeners();
+  }
+
+  Future<ApplicationEntry> _entry(Application a) async {
+    var name = '応募者';
+    var title = '募集';
+    try {
+      name = (await api.member(a.applicantId)).displayName;
+    } catch (_) {}
+    try {
+      title = (await api.candidate(a.listingId)).title;
+    } catch (_) {}
+    return ApplicationEntry(a, name, title);
+  }
+
+  Future<void> approve(ApplicationEntry entry) => _decide(
+      entry,
+      () async =>
+          lastMatch = await api.approveApplication(entry.application.id));
+
+  Future<void> decline(ApplicationEntry entry) =>
+      _decide(entry, () => api.declineApplication(entry.application.id));
+
+  Future<void> _decide(
+      ApplicationEntry entry, Future<void> Function() action) async {
+    final id = entry.application.id;
+    if (busy.contains(id)) return;
+    busy.add(id);
+    error = null;
+    notifyListeners();
+    try {
+      await action();
+    } on ForbiddenFailure catch (e) {
+      // Already decided (e.g. an earlier attempt committed but its response
+      // was lost) or the applicant is no longer available: refresh the list.
+      error = describeFailure(e);
+    } catch (e) {
+      error = describeFailure(e);
+    } finally {
+      busy.remove(id);
+    }
+    final failure = error;
+    await refresh();
+    if (failure != null && error == null) {
+      error = failure; // keep the decision's error visible after the refresh
+      notifyListeners();
+    }
   }
 
   @override

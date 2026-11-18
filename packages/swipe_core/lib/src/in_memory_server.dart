@@ -58,7 +58,8 @@ class InMemoryServer {
 
   void addCard(Candidate card) {
     final config = _configs[card.serviceId];
-    if (config == null) throw ArgumentError('unknown service ${card.serviceId}');
+    if (config == null)
+      throw ArgumentError('unknown service ${card.serviceId}');
     for (final spec in config.fields) {
       if (spec.required && !card.attributes.containsKey(spec.key)) {
         throw ArgumentError('card ${card.id} misses ${spec.key}');
@@ -74,8 +75,8 @@ class InMemoryServer {
 
   /// Records a decision made before the scenario starts (seed data).
   void seedDecision(String actorId, String cardId, SwipeIntent intent) {
-    _decisionsOf(actorId)[cardId] = _Decision(
-        intent, const InteractionResult(InteractionStatus.recorded));
+    _decisionsOf(actorId)[cardId] =
+        _Decision(intent, const InteractionResult(InteractionStatus.recorded));
     final card = _cards[cardId]!;
     final config = _configs[card.serviceId]!;
     if (intent == SwipeIntent.positive &&
@@ -87,8 +88,8 @@ class InMemoryServer {
   void updateConfig(ServiceConfig config) => registerService(config);
 
   void suspend(String memberId) {
-    _members[memberId] = _members[memberId]!.copyWith(
-        status: AccountStatus.suspended);
+    _members[memberId] =
+        _members[memberId]!.copyWith(status: AccountStatus.suspended);
   }
 
   void injectFault(Fault fault) => _faults.add(fault);
@@ -152,8 +153,8 @@ class InMemoryServer {
       _members[card.ownerId]?.status == AccountStatus.active &&
       !_blocked(actor.id, card.ownerId);
 
-  Match _createMatch(ServiceConfig config, Candidate card, Set<String> parties,
-      String key) {
+  Match _createMatch(
+      ServiceConfig config, Candidate card, Set<String> parties, String key) {
     final existing = _matchByKey[key];
     if (existing != null) return _matches[existing]!;
     final match = Match(
@@ -279,8 +280,7 @@ class _Client implements MatchingApi, RuleContext {
         final items = start >= visible.length
             ? <Candidate>[]
             : visible.sublist(start, end);
-        return Page(items,
-            nextCursor: end < visible.length ? '$end' : null);
+        return Page(items, nextCursor: end < visible.length ? '$end' : null);
       });
 
   @override
@@ -306,9 +306,15 @@ class _Client implements MatchingApi, RuleContext {
         if (target != null && target.serviceId == actor.serviceId) {
           final shown = target.id == actor.id ||
               _s._matches.values.any((m) =>
-                  m.parties.contains(actor.id) && m.parties.contains(target.id)) ||
-              _s._cards.values
-                  .any((c) => c.ownerId == target.id && _s._visibleTo(c, actor));
+                  m.parties.contains(actor.id) &&
+                  m.parties.contains(target.id)) ||
+              // A listing owner may see who applied to their listing.
+              _s._applications.values.any((a) =>
+                  a.applicantId == target.id &&
+                  _s._cards[a.listingId]?.ownerId == actor.id &&
+                  !_s._blocked(actor.id, target.id)) ||
+              _s._cards.values.any(
+                  (c) => c.ownerId == target.id && _s._visibleTo(c, actor));
           if (shown) return target;
         }
         throw const ForbiddenFailure('member not available');
@@ -329,10 +335,7 @@ class _Client implements MatchingApi, RuleContext {
       _s._run(mutating: true, () {
         final actor = _actor;
         final config = _s._configOf(actor);
-        return _s._idempotently(
-            actor.id,
-            'interaction',
-            command.idempotencyKey,
+        return _s._idempotently(actor.id, 'interaction', command.idempotencyKey,
             '${command.candidateId}|${command.intent.name}|${command.configVersion}',
             () {
           if (command.configVersion != config.version) {
@@ -356,12 +359,14 @@ class _Client implements MatchingApi, RuleContext {
           decisions[card.id] = decision;
           if (command.intent == SwipeIntent.negative) return decision.result;
 
-          final outcome = ruleFor(config.matchRule).onPositive(this, actor.id, card);
+          final outcome =
+              ruleFor(config.matchRule).onPositive(this, actor.id, card);
           decision.result = switch (outcome) {
             NoMatchYet() => const InteractionResult(InteractionStatus.recorded),
             AwaitOwnerApproval() => () {
                 _s._createApplication(card, actor.id);
-                return const InteractionResult(InteractionStatus.awaitingApproval);
+                return const InteractionResult(
+                    InteractionStatus.awaitingApproval);
               }(),
             CreateMatch(:final parties, :final uniqueKey) => InteractionResult(
                 InteractionStatus.matched,
@@ -413,7 +418,10 @@ class _Client implements MatchingApi, RuleContext {
           throw const ForbiddenFailure('applicant not available');
         }
         final config = _s._configOf(actor);
-        final match = _s._createMatch(config, listing, {app.applicantId, actor.id},
+        final match = _s._createMatch(
+            config,
+            listing,
+            {app.applicantId, actor.id},
             OwnerApprovalRule.uniqueKey(listing.id, app.applicantId));
         final decision = _s._decisions[app.applicantId]?[listing.id];
         if (decision != null) {
@@ -443,8 +451,8 @@ class _Client implements MatchingApi, RuleContext {
   Future<Message> sendMessage(String matchId, String body, String clientKey) =>
       _s._run(mutating: true, () {
         final actor = _actor;
-        return _s._idempotently(actor.id, 'message', clientKey, '$matchId|$body',
-            () {
+        return _s._idempotently(
+            actor.id, 'message', clientKey, '$matchId|$body', () {
           final match = _s._matchFor(actor, matchId);
           _s._assertConversationOpen(actor, match);
           final text = body.trim();
