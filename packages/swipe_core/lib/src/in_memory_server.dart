@@ -39,6 +39,8 @@ class InMemoryServer {
   final _matches = <String, Match>{};
   final _matchByKey = <String, String>{};
   final _applications = <String, Application>{};
+  final _applicationResults =
+      <String, ({Application application, String? matchId})>{};
   final _messages = <String, List<Message>>{};
 
   /// Unordered pairs "a|b" (sorted) that are blocked.
@@ -394,12 +396,14 @@ class _Client implements MatchingApi, RuleContext {
         return _s._applications.values
             .where((a) =>
                 _s._cards[a.listingId]?.ownerId == actor.id &&
+                _s._members[a.applicantId]?.status == AccountStatus.active &&
                 !_s._blocked(actor.id, a.applicantId))
             .toList();
       });
 
   Application _ownedApplication(Member actor, String applicationId) {
-    final app = _s._applications[applicationId];
+    final app = _s._applications[applicationId] ??
+        _s._applicationResults[applicationId]?.application;
     final listing = app == null ? null : _s._cards[app.listingId];
     if (app == null || listing == null || listing.ownerId != actor.id) {
       throw const ForbiddenFailure('only the listing owner can decide');
@@ -417,6 +421,14 @@ class _Client implements MatchingApi, RuleContext {
             _s._members[app.applicantId]?.status != AccountStatus.active) {
           throw const ForbiddenFailure('applicant not available');
         }
+        final previous = _s._applicationResults[app.id];
+        if (previous != null) {
+          final matchId = previous.matchId;
+          if (matchId == null) {
+            throw const ConflictFailure('application already declined');
+          }
+          return _s._matches[matchId]!;
+        }
         final config = _s._configOf(actor);
         final match = _s._createMatch(
             config,
@@ -429,6 +441,7 @@ class _Client implements MatchingApi, RuleContext {
               InteractionResult(InteractionStatus.matched, match: match);
         }
         _s._applications.remove(app.id);
+        _s._applicationResults[app.id] = (application: app, matchId: match.id);
         return match;
       });
 
@@ -436,7 +449,11 @@ class _Client implements MatchingApi, RuleContext {
   Future<void> declineApplication(String applicationId) =>
       _s._run(mutating: true, () {
         final app = _ownedApplication(_actor, applicationId);
+        if (_s._applicationResults[app.id]?.matchId != null) {
+          throw const ConflictFailure('application already approved');
+        }
         _s._applications.remove(app.id);
+        _s._applicationResults[app.id] = (application: app, matchId: null);
       });
 
   @override
@@ -526,6 +543,9 @@ class _Client implements MatchingApi, RuleContext {
         _s._applications.removeWhere((_, a) =>
             a.applicantId == actor.id ||
             _s._cards[a.listingId]?.ownerId == actor.id);
+        _s._applicationResults.removeWhere((_, result) =>
+            result.application.applicantId == actor.id ||
+            _s._cards[result.application.listingId]?.ownerId == actor.id);
         _s._closeMatches((m) => m.parties.contains(actor.id));
         _s._streams.remove(actor.id)?.close();
       });

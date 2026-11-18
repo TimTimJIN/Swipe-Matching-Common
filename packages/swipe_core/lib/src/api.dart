@@ -52,13 +52,15 @@ abstract interface class MatchingApi {
 
   Future<List<Match>> listMatches();
 
-  /// Applications to listings owned by the caller (owner-approval services).
+  /// Pending applications from active, unblocked applicants to the caller's
+  /// listings (owner-approval services).
   Future<List<Application>> listIncomingApplications();
 
-  /// Only the listing owner may approve. Approving twice returns the same
-  /// match.
+  /// Only the listing owner may approve. Retrying with the same application ID
+  /// returns the existing match while the applicant is available.
   Future<Match> approveApplication(String applicationId);
 
+  /// Only the listing owner may decline. Retrying a decline is a no-op.
   Future<void> declineApplication(String applicationId);
 
   Future<List<Message>> messages(String matchId);

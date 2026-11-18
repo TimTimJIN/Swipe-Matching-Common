@@ -220,9 +220,12 @@ class ApplicationsController extends ChangeNotifier {
   final Set<String> busy = {};
 
   int _refreshVersion = 0;
+  Future<void>? _latestRefresh;
   bool _disposed = false;
 
-  Future<void> refresh() async {
+  Future<void> refresh() => _latestRefresh = _refresh();
+
+  Future<void> _refresh() async {
     if (_disposed) return;
     final version = ++_refreshVersion;
     try {
@@ -270,12 +273,23 @@ class ApplicationsController extends ChangeNotifier {
     Match? match;
     String? failure;
     try {
-      match = await action();
+      try {
+        match = await action();
+      } on TemporarilyUnavailableFailure catch (e) {
+        if (!e.mayHaveCommitted) rethrow;
+        match = await action();
+      }
+      entries = entries.where((entry) => entry.application.id != id).toList();
     } catch (e) {
       failure = describeFailure(e);
     }
     // Reload even after an error. The server may have committed the decision.
-    await refresh();
+    var pending = refresh();
+    await pending;
+    while (!_disposed && !identical(pending, _latestRefresh)) {
+      pending = _latestRefresh!;
+      await pending;
+    }
     busy.remove(id);
     if (!_disposed) {
       if (failure != null) error = failure;

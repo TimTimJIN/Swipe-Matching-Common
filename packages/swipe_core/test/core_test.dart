@@ -228,6 +228,40 @@ void main() {
       expect(s.clientFor('applicant').approveApplication(app.id),
           throwsA(isA<ForbiddenFailure>()));
     });
+
+    test('retry after a lost approval response returns the same match',
+        () async {
+      final s = _workServer();
+      await s.clientFor('applicant').submitInteraction(like('job', 'k'));
+      final owner = s.clientFor('owner');
+      final app = (await owner.listIncomingApplications()).single;
+      s.injectFault(Fault.afterCommit);
+
+      await expectLater(owner.approveApplication(app.id),
+          throwsA(isA<TemporarilyUnavailableFailure>()));
+      final committed = (await owner.listMatches()).single;
+      expect((await owner.approveApplication(app.id)).id, committed.id);
+      expect(await owner.listIncomingApplications(), isEmpty);
+      await expectLater(s.clientFor('stranger').approveApplication(app.id),
+          throwsA(isA<ForbiddenFailure>()));
+      await expectLater(
+          owner.declineApplication(app.id), throwsA(isA<ConflictFailure>()));
+    });
+
+    test('suspended applicants are hidden and cannot be approved', () async {
+      final s = _workServer();
+      await s.clientFor('applicant').submitInteraction(like('job', 'k'));
+      final owner = s.clientFor('owner');
+      final app = (await owner.listIncomingApplications()).single;
+      s.suspend('applicant');
+
+      expect(await owner.listIncomingApplications(), isEmpty);
+      await expectLater(
+          owner.approveApplication(app.id), throwsA(isA<ForbiddenFailure>()));
+      await owner.declineApplication(app.id);
+      await owner.declineApplication(app.id);
+      expect(await owner.listMatches(), isEmpty);
+    });
   });
 
   group('configuration', () {

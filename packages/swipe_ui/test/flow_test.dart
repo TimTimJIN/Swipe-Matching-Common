@@ -1,7 +1,40 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:swipe_core/swipe_core.dart';
 import 'package:swipe_ui/swipe_ui.dart';
+
+class _DelayedIncomingApi implements MatchingApi {
+  _DelayedIncomingApi(this.api);
+
+  final MatchingApi api;
+  final reads = <Completer<List<Application>>>[];
+  final decisionReadStarted = Completer<void>();
+
+  @override
+  Future<List<Application>> listIncomingApplications() {
+    final read = Completer<List<Application>>();
+    reads.add(read);
+    if (reads.length == 2) decisionReadStarted.complete();
+    return read.future;
+  }
+
+  @override
+  Stream<MatchingEvent> events() => const Stream.empty();
+
+  @override
+  Future<Member> member(String id) => api.member(id);
+
+  @override
+  Future<Candidate> candidate(String id) => api.candidate(id);
+
+  @override
+  Future<Match> approveApplication(String id) => api.approveApplication(id);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 /// Bounded alternative to pumpAndSettle: a focused text field's blinking
 /// cursor keeps scheduling frames, so pumpAndSettle would never return.
@@ -22,7 +55,39 @@ Future<void> _start(WidgetTester tester, DemoWorld world, String name) async {
 }
 
 void main() {
-  test('overlapping approvals return the outcome for each application', () async {
+  test('approval stays busy until the latest overlapping refresh completes',
+      () async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    final api = _DelayedIncomingApi(world.api);
+    final controller = ApplicationsController(api);
+    addTearDown(() async {
+      controller.dispose();
+      await world.dispose();
+    });
+    final initialApps = await world.api.listIncomingApplications();
+    final initialRefresh = controller.refresh();
+    api.reads.single.complete(initialApps);
+    await initialRefresh;
+
+    final entry = controller.entries.first;
+    final id = entry.application.id;
+    final decision = controller.approve(entry);
+    await api.decisionReadStarted.future;
+    final latest = controller.refresh();
+    api.reads[1].complete(await world.api.listIncomingApplications());
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.busy, contains(id));
+
+    api.reads[2].complete(await world.api.listIncomingApplications());
+    await latest;
+    expect(await decision, isNotNull);
+    expect(controller.busy, isEmpty);
+    expect(controller.entries.map((row) => row.application.id),
+        isNot(contains(id)));
+  });
+
+  test('overlapping approvals return the outcome for each application',
+      () async {
     final world = DemoWorld.work(ownerDelay: Duration.zero);
     final controller = ApplicationsController(world.api);
     addTearDown(() async {
@@ -161,7 +226,8 @@ void main() {
     world.server.injectFault(Fault.afterCommit);
     await tester.tap(find.text('承認する').first);
     await _settle(tester);
-    expect(find.text('通信結果を確認できませんでした。再送しても重複しません。'), findsOneWidget);
+    expect(find.text('架空 相談員あさんの応募を承認しました。成立したので会話できます。'), findsOneWidget);
+    expect(find.text('会話へ'), findsOneWidget);
     expect(find.text('架空 相談員あ'), findsNothing); // committed; refreshed away
     final matches = await tester.runAsync(world.api.listMatches);
     expect(matches!.where((m) => m.candidateId == myListingId), hasLength(1));
