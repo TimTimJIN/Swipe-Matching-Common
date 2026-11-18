@@ -262,6 +262,26 @@ void main() {
       await owner.declineApplication(app.id);
       expect(await owner.listMatches(), isEmpty);
     });
+
+    for (final block in [false, true]) {
+      test(
+          'approval replay checks whether the applicant was '
+          '${block ? 'blocked' : 'suspended'} after approval', () async {
+        final s = _workServer();
+        await s.clientFor('applicant').submitInteraction(like('job', 'k'));
+        final owner = s.clientFor('owner');
+        final app = (await owner.listIncomingApplications()).single;
+        await owner.approveApplication(app.id);
+        if (block) {
+          await owner.block('applicant');
+        } else {
+          s.suspend('applicant');
+        }
+
+        await expectLater(
+            owner.approveApplication(app.id), throwsA(isA<ForbiddenFailure>()));
+      });
+    }
   });
 
   group('configuration', () {

@@ -55,6 +55,34 @@ Future<void> _start(WidgetTester tester, DemoWorld world, String name) async {
 }
 
 void main() {
+  test('approval finishes when the latest incoming list does not respond',
+      () async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    final api = _DelayedIncomingApi(world.api);
+    final controller = ApplicationsController(api,
+        refreshTimeout: const Duration(milliseconds: 50));
+    addTearDown(() async {
+      controller.dispose();
+      await world.dispose();
+    });
+    final initialApps = await world.api.listIncomingApplications();
+    final initial = controller.refresh();
+    api.reads.single.complete(initialApps);
+    await initial;
+
+    final entry = controller.entries.first;
+    final decision = controller.approve(entry);
+    await api.decisionReadStarted.future;
+    final latest = controller.refresh();
+    api.reads[1].complete(await world.api.listIncomingApplications());
+    expect(await decision.timeout(const Duration(seconds: 2)), isNotNull);
+    expect(controller.busy, isEmpty);
+    expect(controller.entries, isNot(contains(entry)));
+
+    api.reads[2].complete(await world.api.listIncomingApplications());
+    await latest;
+  });
+
   test('approval stays busy until the latest overlapping refresh completes',
       () async {
     final world = DemoWorld.work(ownerDelay: Duration.zero);
@@ -217,13 +245,14 @@ void main() {
     await tester.runAsync(world.dispose);
   });
 
-  testWidgets('work owner: lost approval response does not create two matches',
+  testWidgets('work owner: failed approval retry recovers the existing match',
       (tester) async {
     final world = DemoWorld.work(ownerDelay: Duration.zero);
     await _start(tester, world, '仕事相談');
     await tester.tap(find.text('届いた応募'));
     await _settle(tester);
     world.server.injectFault(Fault.afterCommit);
+    world.server.injectFault(Fault.beforeCommit);
     await tester.tap(find.text('承認する').first);
     await _settle(tester);
     expect(find.text('架空 相談員あさんの応募を承認しました。成立したので会話できます。'), findsOneWidget);

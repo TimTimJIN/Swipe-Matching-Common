@@ -1,4 +1,5 @@
 import 'config.dart';
+import 'errors.dart';
 import 'models.dart';
 
 /// Events pushed to a signed-in member.
@@ -50,14 +51,19 @@ abstract interface class MatchingApi {
 
   Future<InteractionResult> submitInteraction(InteractionCommand command);
 
+  /// Open matches involving the signed-in member.
   Future<List<Match>> listMatches();
 
   /// Pending applications from active, unblocked applicants to the caller's
   /// listings (owner-approval services).
   Future<List<Application>> listIncomingApplications();
 
-  /// Only the listing owner may approve. Retrying with the same application ID
-  /// returns the existing match while the applicant is available.
+  /// Only the listing owner may approve. Check the caller's access and that the
+  /// applicant is active and unblocked before returning any stored result.
+  /// If the applicant has since been suspended or blocked, even a retry fails
+  /// with [ForbiddenFailure]. Otherwise retrying the same approval returns
+  /// the existing match. An application already declined fails with
+  /// [ConflictFailure].
   Future<Match> approveApplication(String applicationId);
 
   /// Only the listing owner may decline. Retrying a decline is a no-op.

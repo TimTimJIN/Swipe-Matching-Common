@@ -205,13 +205,15 @@ class ApplicationEntry {
 
 /// Owner side of owner-approval services: applications to my listings.
 class ApplicationsController extends ChangeNotifier {
-  ApplicationsController(this.api) {
+  ApplicationsController(this.api,
+      {this.refreshTimeout = const Duration(seconds: 10)}) {
     _events = api.events().listen((event) {
       if (event is ApplicationReceived || event is MatchCreated) refresh();
     });
   }
 
   final MatchingApi api;
+  final Duration refreshTimeout;
   late final StreamSubscription<MatchingEvent> _events;
   List<ApplicationEntry> entries = const [];
   String? error;
@@ -255,11 +257,44 @@ class ApplicationsController extends ChangeNotifier {
   }
 
   Future<Match?> approve(ApplicationEntry entry) =>
-      _decide(entry, () => api.approveApplication(entry.application.id));
+      _decide(entry, () => _approve(entry.application));
+
+  Future<Match> _approve(Application application) async {
+    try {
+      return await api.approveApplication(application.id);
+    } on TemporarilyUnavailableFailure catch (failure) {
+      if (!failure.mayHaveCommitted) rethrow;
+      try {
+        return await api.approveApplication(application.id);
+      } on TemporarilyUnavailableFailure {
+        // The first approval may already have produced an open match.
+        try {
+          final matches = await api.listMatches().timeout(refreshTimeout);
+          for (final match in matches) {
+            if (match.candidateId == application.listingId &&
+                match.parties.contains(application.applicantId)) {
+              return match;
+            }
+          }
+        } on MatchingException {
+          // Preserve the uncertain approval result if verification fails.
+        } on TimeoutException {
+          // Preserve the uncertain approval result if verification times out.
+        }
+        throw failure;
+      }
+    }
+  }
 
   Future<void> decline(ApplicationEntry entry) async {
     await _decide(entry, () async {
-      await api.declineApplication(entry.application.id);
+      final id = entry.application.id;
+      try {
+        await api.declineApplication(id);
+      } on TemporarilyUnavailableFailure catch (failure) {
+        if (!failure.mayHaveCommitted) rethrow;
+        await api.declineApplication(id);
+      }
       return null;
     });
   }
@@ -273,29 +308,36 @@ class ApplicationsController extends ChangeNotifier {
     Match? match;
     String? failure;
     try {
-      try {
-        match = await action();
-      } on TemporarilyUnavailableFailure catch (e) {
-        if (!e.mayHaveCommitted) rethrow;
-        match = await action();
-      }
+      match = await action();
       entries = entries.where((entry) => entry.application.id != id).toList();
     } catch (e) {
       failure = describeFailure(e);
     }
     // Reload even after an error. The server may have committed the decision.
-    var pending = refresh();
-    await pending;
-    while (!_disposed && !identical(pending, _latestRefresh)) {
-      pending = _latestRefresh!;
-      await pending;
-    }
+    await _waitForRefresh();
     busy.remove(id);
     if (!_disposed) {
       if (failure != null) error = failure;
       notifyListeners();
     }
     return match;
+  }
+
+  Future<void> _waitForRefresh() async {
+    if (_disposed) return;
+    final elapsed = Stopwatch()..start();
+    var pending = refresh();
+    try {
+      while (!_disposed) {
+        final remaining = refreshTimeout - elapsed.elapsed;
+        if (remaining <= Duration.zero) return;
+        await pending.timeout(remaining);
+        if (identical(pending, _latestRefresh)) return;
+        pending = _latestRefresh!;
+      }
+    } on TimeoutException {
+      // Let the decision finish. A late refresh can still update the list.
+    }
   }
 
   @override
