@@ -1,8 +1,8 @@
 # 作業状況
 
-更新： 2026-11-18（日本時間） Codex
+更新：2026-11-18（日本時間） Codex
 
-状態：共通基盤 v0.2 を実装済み（模擬バックエンド）。実機検証・実サーバー接続・独立レビューは未実施
+状態：共通基盤 v0.2 を実装済み（模擬バックエンド）。実機検証・実サーバー接続・Gemini レビューは未実施
 現在の担当：Claude Code（実装）／Codex（レビュー）
 編集権：作業後に返却済み。次に編集する担当が改めて取得する
 
@@ -41,7 +41,7 @@
 | 再送の検証 | 達成（模擬） | コアテスト「lost response can be retried safely」「message resend…」、UIテスト「chat: lost response…」「deck: failed decision…」 |
 | 成立前の会話制限 | 達成（模擬） | コアテスト「non-participants cannot read or send」「one-sided like…」 |
 | iPhone／Android 実機の結果 | 未実施 | Android SDK と macOS／Xcode が未準備 |
-| Claude・Gemini 実モデルレビュー | 未実施 | 接続経路が未確定。Codexレビューも未実施 |
+| Claude・Gemini 実モデルレビュー | Claude 実施済み、Gemini 未実施 | 対象 `7c443cd`。Claude は重大0件。Gemini は接続未対応 |
 
 ## 検証結果
 
@@ -70,4 +70,4 @@
 
 - 2026-11-18：コミット `332d0ca` に応募承認結果のパッチを反映。並行承認時の回帰テストを含む Flutter UI テスト9件とコアテスト23件が通過し、静的解析は指摘なし。
 
-- 2026-11-18：独立レビューの対象を `7c443cd` に固定。Claude・Gemini とも認証済みの呼び出し経路を確認できず未実施。詳細は `docs/SWIPE_MATCHING_CASE.md`。
+- 2026-11-18：独立レビューの対象を `7c443cd` に固定。Windows の Claude Code（Opus 5.5）でレビューを完了。重大0件、中程度3件、軽微4件。Gemini は接続未対応で未実施。詳細は `docs/SWIPE_MATCHING_CASE.md`。
