@@ -223,3 +223,14 @@
 - [S9 Firebase：Transactions](https://firebase.google.com/docs/firestore/manage-data/transactions)
 - [S10 Apple：Account deletion](https://developer.apple.com/go/?id=ar-ad-support)
 - [S11 React Native：FrameworkとしてExpoを推奨](https://reactnative.dev/)
+
+### 2026-11-18 独立レビューの着手記録
+
+対象コミットは `7c443cddc56184a4829d6ee74aa6937c2a156fc2`。オーナー側の応募管理画面と応募ごとの承認結果を含む版。
+
+| モデル | 実施状況 | 指摘・対応・再確認 |
+| --- | --- | --- |
+| Claude | 未実施。認証済みの CLI・API・連携ツールを確認できず、依頼の送信なし | モデル応答とレビュー ID は未取得 |
+| Gemini | 未実施。認証済みの CLI・API・連携ツールを確認できず、依頼の送信なし | モデル応答とレビュー ID は未取得 |
+
+接続後、両モデルに対象版を独立に確認してもらう。特に並行承認、応答消失後の再試行、会話開始条件、画面遷移、テスト範囲を確認する。指摘の重要度、根拠、対応コミットを残し、重大指摘は修正版を指摘元のモデルで再確認する。

@@ -55,7 +55,7 @@
 
 1. 実サーバーに何を使うか（Firebase、Supabase、独自API など）。
 2. 実機検証の環境：Android SDK（Android Studio）の導入、iOS 用の macOS と Xcode。
-3. 独立レビュー：Gemini は当面なし（2026-11-18 利用者の判断）。Codex は codex exec（ChatGPT アカウント、読み取り専用）で依頼し、コミットを patch にして snapshot で固定する運用。
+3. 独立レビュー：Claude と Gemini の両方を実施する（2026-11-18 利用者の指示）。Codex は codex exec（ChatGPT アカウント、読み取り専用）で依頼し、コミットを patch にして snapshot で固定する運用。
 4. GitHub Issue を使うかどうか（push は 2026-11-18 に承認・実施済み。以後の push も都度承認）。
 5. 最初の用途、市場、対象年齢。
 6. 基盤の direction の更新（案件画面）。
@@ -69,3 +69,5 @@
 ## 応募承認の検証
 
 - 2026-11-18：コミット `332d0ca` に応募承認結果のパッチを反映。並行承認時の回帰テストを含む Flutter UI テスト9件とコアテスト23件が通過し、静的解析は指摘なし。
+
+- 2026-11-18：独立レビューの対象を `7c443cd` に固定。Claude・Gemini とも認証済みの呼び出し経路を確認できず未実施。詳細は `docs/SWIPE_MATCHING_CASE.md`。
