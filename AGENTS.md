@@ -51,7 +51,23 @@
 6. `STATUS.md` を更新するのは、編集権を持つ担当1名だけ。
 7. コミット、push、ブランチの作成や切り替えも編集に含める。編集権を返した後に小さな追記やコミットを頼まれたときも、改めて取得する。
 
-編集権の手順を仕組みで守る改修（手順の1コマンド化、編集権を確かめるフック）は、この案件ではなく AI自律基盤の改修として別に扱う。基盤側で取り込むまでは、このPCの手元でだけ、試作版のフック（`tools/relay*.ps1` など、リポジトリには含めない）が動いている。コミットが止められたら、表示に従って編集権を取得する。表示の手順が分からないとき、または編集権を取得できないときは、回避せずにユーザーに確認する。
+### AI自律基盤 ai-org の作業コマンド（2026-11-18 から）
+
+このリポジトリは ai-org の案件 `case-fb506404bfa84fc598380fe9564ea28e` に結び付いている（`.ai-org.json` と git の設定 `ai-org.case`）。上の手順1〜5は、次のコマンドでまとめて行う。詳細は ai-org の README と、利用者の共通指示（`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`）。
+
+| いつ | コマンド |
+| --- | --- |
+| 作業の前 | `python <データ>\ai_org.py start --case case-fb506404bfa84fc598380fe9564ea28e --agent "<担当> Swipe-Matching-Common <会話の識別子>" [--token-file <パス>]` |
+| コミット・push | git と同じコマンドの中で `$env:AI_ORG_TOKEN_FILE = "<トークンファイル>"` を設定する |
+| 作業の後 | `python C:\Users\hikar\AppData\Local\ai-org\v0.2.0\extensions\dev\dev.py finish --project . --token-file <トークンファイル>`（`tools/check.ps1`、両方の STATUS.md、未コミットを確認してから編集権を返す） |
+
+- `<データ>` は `C:\Users\hikar\Documents\ChatGPT\AI駆動×AI駆動\app-relay`。Claude Code は `--token-file` に会話用の一時フォルダーの `ai-org-case-fb506404bfa84fc598380fe9564ea28e.token` を指定する。
+- 編集権がないと、Claude Code の Edit／Write と、すべての担当のコミット・push が止まる（git の共通設定 core.hooksPath と Claude Code のユーザー設定）。止められたら表示に従う。分からないとき・編集権を取得できないときは、回避せずに利用者に確認する。
+- 2026-11-18 まで手元だけで動かしていた試作版（`tools/relay*.ps1`、`.githooks`、`.claude/settings.json`）は外した。控えはブランチ `backup/kaizen-mixed-20261118`（push していない）。
+
+### Notion のタスク
+
+作業の区切りごとに、Notion「Claude OS」のタスク DB で、このプロジェクトのタスクを起票・完了・見直しする（2026-11-18 利用者が確認なしでの更新を了承）。
 
 ## 現行基盤との関係（未解決の課題）
 

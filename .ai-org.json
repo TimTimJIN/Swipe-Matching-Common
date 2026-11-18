@@ -1,0 +1,13 @@
+{
+  "case": "case-fb506404bfa84fc598380fe9564ea28e",
+  "data": "C:\\Users\\hikar\\Documents\\ChatGPT\\AI駆動×AI駆動\\app-relay",
+  "status_files": [
+    "STATUS.md"
+  ],
+  "check": [
+    "powershell",
+    "-NoProfile",
+    "-File",
+    "tools/check.ps1"
+  ]
+}
