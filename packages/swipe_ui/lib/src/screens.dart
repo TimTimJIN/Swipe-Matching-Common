@@ -60,12 +60,14 @@ class _Shell extends StatefulWidget {
   State<_Shell> createState() => _ShellState();
 }
 
+enum _Tab { discover, matches, applications, settings }
+
 class _ShellState extends State<_Shell> {
   late final DiscoverController _discover = DiscoverController(widget.api);
   MatchesController? _matches;
   ApplicationsController? _applications;
   Member? _me;
-  int _tab = 0;
+  _Tab _tab = _Tab.discover;
   bool _signedOut = false;
 
   @override
@@ -101,6 +103,19 @@ class _ShellState extends State<_Shell> {
     super.dispose();
   }
 
+  void _showApproval(ApplicationEntry application, Match match) {
+    if (!mounted || _signedOut) return;
+    final meId = _me!.id;
+    _showApprovalSnackBar(ScaffoldMessenger.of(context), application, () {
+      if (!mounted || _signedOut) return;
+      final entry = MatchEntry(
+          match,
+          '${application.applicantName}（${application.listingTitle}）',
+          match.otherParty(meId));
+      _openChat(context, widget.api, entry, meId);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_signedOut) {
@@ -109,26 +124,27 @@ class _ShellState extends State<_Shell> {
     }
     final matches = _matches;
     final applications = _applications;
-    final pages = [
-      DiscoverScreen(
+    final pages = {
+      _Tab.discover: DiscoverScreen(
           controller: _discover,
           icon: widget.branding.cardIcon,
-          onMatched: () => setState(() => _tab = 1)),
-      if (matches != null)
-        MatchesScreen(controller: matches, config: _discover.config!)
-      else
-        const Center(child: CircularProgressIndicator()),
+          onMatched: () => setState(() => _tab = _Tab.matches)),
+      _Tab.matches: matches != null
+          ? MatchesScreen(controller: matches, config: _discover.config!)
+          : const Center(child: CircularProgressIndicator()),
       if (applications != null)
-        ApplicationsScreen(
-            controller: applications,
-            onMatched: () => setState(() => _tab = 1)),
-      SettingsScreen(
+        _Tab.applications: ApplicationsScreen(
+            controller: applications, onApproved: _showApproval),
+      _Tab.settings: SettingsScreen(
         api: widget.api,
         me: _me,
-        onWithdrawn: () => setState(() => _signedOut = true),
+        onWithdrawn: () {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          setState(() => _signedOut = true);
+        },
       ),
-    ];
-    final tab = _tab < pages.length ? _tab : 0;
+    };
+    final tabs = pages.keys.toList();
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.branding.appName),
@@ -149,13 +165,13 @@ class _ShellState extends State<_Shell> {
                 ),
               ),
       ),
-      body: SafeArea(child: pages[tab]),
+      body: SafeArea(child: pages[_tab]!),
       // Rebuild the bar when the number of applications changes (badge).
       bottomNavigationBar: ListenableBuilder(
         listenable: applications ?? _discover,
         builder: (context, _) => NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
+          selectedIndex: tabs.indexOf(_tab),
+          onDestinationSelected: (i) => setState(() => _tab = tabs[i]),
           destinations: [
             const NavigationDestination(
                 icon: Icon(Icons.style_outlined), label: '探す'),
@@ -352,14 +368,8 @@ class MatchesScreen extends StatelessWidget {
                   title: Text(e.title),
                   subtitle: const Text('会話を開く'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // A leftover snackbar would cover the message input.
-                    ScaffoldMessenger.of(context).clearSnackBars();
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                      builder: (_) => ChatScreen(
-                          api: controller.api, entry: e, meId: controller.meId),
-                    ));
-                  },
+                  onTap: () =>
+                      _openChat(context, controller.api, e, controller.meId),
                 ),
             ],
           ),
@@ -369,21 +379,43 @@ class MatchesScreen extends StatelessWidget {
   }
 }
 
+void _openChat(
+    BuildContext context, MatchingApi api, MatchEntry entry, String meId) {
+  // A leftover snackbar would cover the message input.
+  ScaffoldMessenger.of(context).clearSnackBars();
+  Navigator.of(context).push(MaterialPageRoute<void>(
+    builder: (_) => ChatScreen(api: api, entry: entry, meId: meId),
+  ));
+}
+
+void _showApprovalSnackBar(ScaffoldMessengerState messenger,
+    ApplicationEntry application, VoidCallback? openChat) {
+  messenger.showSnackBar(SnackBar(
+    content: Text('${application.applicantName}さんの応募を承認しました。成立したので会話できます。'),
+    action: openChat == null
+        ? null
+        : SnackBarAction(label: '会話へ', onPressed: openChat),
+  ));
+}
+
 /// Owner side of owner-approval services: approve or decline applications
 /// to my listings. Approving creates a match and opens the conversation.
 class ApplicationsScreen extends StatelessWidget {
   const ApplicationsScreen(
-      {super.key, required this.controller, required this.onMatched});
+      {super.key, required this.controller, this.onMatched, this.onApproved});
   final ApplicationsController controller;
-  final VoidCallback onMatched;
+  final VoidCallback? onMatched;
+  final void Function(ApplicationEntry, Match)? onApproved;
 
   Future<void> _approve(BuildContext context, ApplicationEntry e) async {
+    final messenger = ScaffoldMessenger.of(context);
     final match = await controller.approve(e);
-    if (context.mounted && match != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${e.applicantName}さんの応募を承認しました。成立したので会話できます。'),
-        action: SnackBarAction(label: '会話へ', onPressed: onMatched),
-      ));
+    if (match == null) return;
+    final approved = onApproved;
+    if (approved != null) {
+      approved(e, match);
+    } else if (context.mounted && messenger.mounted) {
+      _showApprovalSnackBar(messenger, e, onMatched);
     }
   }
 
@@ -411,7 +443,9 @@ class ApplicationsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final error = controller.error;
+        final error = controller.error ?? controller.unlistedDecisionError;
+        final errorStyle =
+            TextStyle(color: Theme.of(context).colorScheme.error);
         if (controller.entries.isEmpty) {
           return _Message(
               text: error ?? 'あなたの募集に届いた応募が、ここに表示されます。',
@@ -429,9 +463,7 @@ class ApplicationsScreen extends StatelessWidget {
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(error,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
+                  child: Text(error, style: errorStyle),
                 ),
               for (final e in controller.entries)
                 Card(
@@ -444,6 +476,9 @@ class ApplicationsScreen extends StatelessWidget {
                             style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 4),
                         Text('「${e.listingTitle}」への応募'),
+                        if (controller.decisionError(e.application.id)
+                            case final failure?)
+                          Text(failure, style: errorStyle),
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,

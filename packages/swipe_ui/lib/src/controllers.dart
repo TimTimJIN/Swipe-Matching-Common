@@ -217,6 +217,17 @@ class ApplicationsController extends ChangeNotifier {
   late final StreamSubscription<MatchingEvent> _events;
   List<ApplicationEntry> entries = const [];
   String? error;
+  final _decisionErrors = <String, String>{};
+
+  String? decisionError(String applicationId) => _decisionErrors[applicationId];
+
+  String? get unlistedDecisionError {
+    final visibleIds = entries.map((entry) => entry.application.id).toSet();
+    for (final failure in _decisionErrors.entries) {
+      if (!visibleIds.contains(failure.key)) return failure.value;
+    }
+    return null;
+  }
 
   /// Application ids with a decision in flight (buttons are disabled).
   final Set<String> busy = {};
@@ -236,6 +247,8 @@ class ApplicationsController extends ChangeNotifier {
       final loaded = [for (final a in apps) await _entry(a)];
       if (_disposed || version != _refreshVersion) return;
       entries = loaded;
+      final visibleIds = loaded.map((entry) => entry.application.id).toSet();
+      _decisionErrors.removeWhere((id, _) => !visibleIds.contains(id));
       error = null;
     } catch (e) {
       if (_disposed || version != _refreshVersion) return;
@@ -303,7 +316,7 @@ class ApplicationsController extends ChangeNotifier {
       ApplicationEntry entry, Future<Match?> Function() action) async {
     final id = entry.application.id;
     if (_disposed || !busy.add(id)) return null;
-    error = null;
+    _decisionErrors.remove(id);
     notifyListeners();
     Match? match;
     String? failure;
@@ -316,10 +329,9 @@ class ApplicationsController extends ChangeNotifier {
     // Reload even after an error. The server may have committed the decision.
     await _waitForRefresh();
     busy.remove(id);
-    if (!_disposed) {
-      if (failure != null) error = failure;
-      notifyListeners();
-    }
+    if (_disposed) return null;
+    if (failure != null) _decisionErrors[id] = failure;
+    notifyListeners();
     return match;
   }
 

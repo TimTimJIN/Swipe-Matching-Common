@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:material_ui/material_ui.dart' hide Page;
 import 'package:swipe_core/swipe_core.dart';
 import 'package:swipe_ui/swipe_ui.dart';
 
@@ -36,6 +36,38 @@ class _DelayedIncomingApi implements MatchingApi {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _WorkApi extends _DelayedIncomingApi {
+  _WorkApi(super.api, {this.readMe, this.approve, this.readMatches});
+
+  final Future<Member> Function()? readMe;
+  final Future<Match> Function(String)? approve;
+  final Future<List<Match>> Function()? readMatches;
+
+  @override
+  Future<Member> me() => readMe?.call() ?? api.me();
+
+  @override
+  Future<ServiceConfig> fetchConfig() => api.fetchConfig();
+
+  @override
+  Future<Page<Candidate>> fetchCandidates({String? cursor, int limit = 10}) =>
+      api.fetchCandidates(cursor: cursor, limit: limit);
+
+  @override
+  Future<List<Application>> listIncomingApplications() =>
+      api.listIncomingApplications();
+
+  @override
+  Future<List<Match>> listMatches() => readMatches?.call() ?? api.listMatches();
+
+  @override
+  Future<Match> approveApplication(String id) =>
+      approve?.call(id) ?? api.approveApplication(id);
+
+  @override
+  Future<List<Message>> messages(String matchId) => api.messages(matchId);
+}
+
 /// Bounded alternative to pumpAndSettle: a focused text field's blinking
 /// cursor keeps scheduling frames, so pumpAndSettle would never return.
 Future<void> _settle(WidgetTester tester) async {
@@ -44,11 +76,12 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<void> _start(WidgetTester tester, DemoWorld world, String name) async {
+Future<void> _start(WidgetTester tester, DemoWorld world, String name,
+    {MatchingApi? api}) async {
   await tester.binding.setSurfaceSize(const Size(480, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(SwipeMatchingApp(
-    api: world.api,
+    api: api ?? world.api,
     branding: AppBranding(appName: name, seedColor: Colors.teal),
   ));
   await _settle(tester);
@@ -71,17 +104,62 @@ void main() {
     await initial;
 
     final entry = controller.entries.first;
+    final id = entry.application.id;
     final decision = controller.approve(entry);
     await api.decisionReadStarted.future;
     final latest = controller.refresh();
     api.reads[1].complete(await world.api.listIncomingApplications());
     expect(await decision.timeout(const Duration(seconds: 2)), isNotNull);
     expect(controller.busy, isEmpty);
-    expect(controller.entries, isNot(contains(entry)));
+    final remainingIds = initialApps.map((app) => app.id).toSet()..remove(id);
+    expect(controller.entries.map((row) => row.application.id).toSet(),
+        remainingIds);
 
-    api.reads[2].complete(await world.api.listIncomingApplications());
+    final lateApps = await world.api.listIncomingApplications();
+    final declined = lateApps.removeLast();
+    await world.api.declineApplication(declined.id);
+    api.reads[2].complete(lateApps);
     await latest;
+    expect(controller.entries.map((row) => row.application.id).toSet(),
+        remainingIds..remove(declined.id));
   });
+
+  final lookupCases = <String, Future<List<Match>> Function()>{
+    'no matching result': () async => [],
+    'lookup fails': () async =>
+        throw const TemporarilyUnavailableFailure('lookup failed'),
+    'lookup times out': () => Completer<List<Match>>().future,
+  };
+  for (final lookup in lookupCases.entries) {
+    test('unconfirmed approval remains actionable when ${lookup.key}',
+        () async {
+      final world = DemoWorld.work(ownerDelay: Duration.zero);
+      var attempts = 0;
+      final api =
+          _WorkApi(world.api, readMatches: lookup.value, approve: (_) async {
+        throw TemporarilyUnavailableFailure('approval unavailable',
+            mayHaveCommitted: ++attempts == 1);
+      });
+      final controller = ApplicationsController(api,
+          refreshTimeout: const Duration(milliseconds: 50));
+      addTearDown(() async {
+        controller.dispose();
+        await world.dispose();
+      });
+      await controller.refresh();
+      final entry = controller.entries.first;
+      final id = entry.application.id;
+
+      expect(await controller.approve(entry), isNull);
+      expect(attempts, 2);
+      expect(controller.entries.map((row) => row.application.id), contains(id));
+      expect(
+          controller.decisionError(id),
+          describeFailure(const TemporarilyUnavailableFailure('unknown',
+              mayHaveCommitted: true)));
+      expect(controller.busy, isEmpty);
+    });
+  }
 
   test('approval stays busy until the latest overlapping refresh completes',
       () async {
@@ -138,6 +216,12 @@ void main() {
         contains(first.application.id));
     expect(controller.entries.map((entry) => entry.application.id),
         isNot(contains(second.application.id)));
+    expect(
+        controller.decisionError(first.application.id), '通信できませんでした。再送してください。');
+    await controller.refresh();
+    expect(controller.decisionError(first.application.id), isNotNull);
+    expect(await controller.approve(first), isNotNull);
+    expect(controller.decisionError(first.application.id), isNull);
   });
 
   testWidgets(
@@ -248,6 +332,8 @@ void main() {
   testWidgets('work owner: failed approval retry recovers the existing match',
       (tester) async {
     final world = DemoWorld.work(ownerDelay: Duration.zero);
+    // Disable simulation so its greeting cannot consume the injected faults.
+    await tester.runAsync(world.dispose);
     await _start(tester, world, '仕事相談');
     await tester.tap(find.text('届いた応募'));
     await _settle(tester);
@@ -260,6 +346,53 @@ void main() {
     expect(find.text('架空 相談員あ'), findsNothing); // committed; refreshed away
     final matches = await tester.runAsync(world.api.listMatches);
     expect(matches!.where((m) => m.candidateId == myListingId), hasLength(1));
+  });
+
+  testWidgets(
+      'owner approval notification survives a tab switch and opens chat',
+      (tester) async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    final approve = Completer<void>();
+    final api = _WorkApi(world.api, approve: (id) async {
+      await approve.future;
+      return world.api.approveApplication(id);
+    });
+    await _start(tester, world, '仕事相談', api: api);
+    await tester.tap(find.text('届いた応募'));
+    await _settle(tester);
+    await tester.tap(find.text('承認する').first);
+    await tester.tap(find.text('設定'));
+    await _settle(tester);
+    approve.complete();
+    await _settle(tester);
+
+    expect(find.textContaining('架空 相談員あさんの応募を承認しました'), findsOneWidget);
+    await tester.tap(find.text('会話へ'));
+    await _settle(tester);
+    final chat = tester.widget<ChatScreen>(find.byType(ChatScreen));
+    final match = (await tester.runAsync(world.api.listMatches))!.single;
+    expect(chat.entry.match.id, match.id);
+    expect(chat.entry.counterpartId, match.otherParty(world.meId));
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.runAsync(world.dispose);
+  });
+
+  testWidgets('settings stays selected when the owner tab becomes available',
+      (tester) async {
+    final world = DemoWorld.work(ownerDelay: Duration.zero);
+    final me = Completer<Member>();
+    final api = _WorkApi(world.api, readMe: () => me.future);
+    await _start(tester, world, '仕事相談', api: api);
+    expect(find.text('届いた応募'), findsNothing);
+    await tester.tap(find.text('設定'));
+    await _settle(tester);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+
+    me.complete((await tester.runAsync(world.api.me))!);
+    await _settle(tester);
+    expect(find.text('届いた応募'), findsOneWidget);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.byType(ApplicationsScreen), findsNothing);
     await tester.runAsync(world.dispose);
   });
 
