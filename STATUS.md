@@ -41,7 +41,7 @@
 | 再送の検証 | 達成（模擬） | コアテスト「lost response can be retried safely」「message resend…」、UIテスト「chat: lost response…」「deck: failed decision…」 |
 | 成立前の会話制限 | 達成（模擬） | コアテスト「non-participants cannot read or send」「one-sided like…」 |
 | iPhone／Android 実機の結果 | 未実施 | Android SDK と macOS／Xcode が未準備 |
-| Claude・Gemini 実モデルレビュー | Claude 実施済み、Gemini 未実施 | 対象 `7c443cd`。Claude は重大0件。Gemini は接続未対応 |
+| Claude・Gemini 実モデルレビュー | Claude 実施済み、Gemini 未実施 | 対象 `7c443cd`。Claude は重大0件。Gemini は利用者の指示で保留 |
 
 ## 検証結果
 
@@ -71,3 +71,5 @@
 - 2026-11-18：コミット `332d0ca` に応募承認結果のパッチを反映。並行承認時の回帰テストを含む Flutter UI テスト9件とコアテスト23件が通過し、静的解析は指摘なし。
 
 - 2026-11-18：独立レビューの対象を `7c443cd` に固定。Windows の Claude Code（Opus 5.5）でレビューを完了。重大0件、中程度3件、軽微4件。Gemini は接続未対応で未実施。詳細は `docs/SWIPE_MATCHING_CASE.md`。
+
+- 2026-11-18：`11e9ba9` で中程度3件に対応。Windows の Claude Code が全件解消と再確認し、新規の重大・中程度は0件。コア25件と Flutter UI 10件が通過し、静的解析は指摘なし。Gemini は保留。
